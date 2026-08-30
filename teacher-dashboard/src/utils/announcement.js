@@ -1,11 +1,12 @@
 import { DEFAULT_FONT } from "../constants/fonts"
-import { DEFAULT_TEXT_COLOR } from "../constants/palette"
+import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import { plainToRuns } from "./richText"
 
 export function createAnnouncementItem(style = {}) {
   const fontFamily = style.fontFamily ?? DEFAULT_FONT.id
   const fontSize = style.fontSize ?? 18
   const textColor = style.textColor ?? DEFAULT_TEXT_COLOR
+  const bgColor = style.bgColor ?? DEFAULT_BG_COLOR
   const bold = Boolean(style.bold)
   const underline = Boolean(style.underline)
   const text = typeof style.text === "string" ? style.text : ""
@@ -14,6 +15,7 @@ export function createAnnouncementItem(style = {}) {
     fontFamily,
     fontSize,
     textColor,
+    bgColor,
     bold,
     underline,
     runs: text

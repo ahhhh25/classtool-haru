@@ -220,6 +220,34 @@ textarea {
     box-shadow 0.25s ease;
 }
 
+.widget-empty {
+  color: var(--chrome-ink, var(--ink-soft));
+}
+
+.widget-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink) 18%, transparent) transparent;
+}
+
+.widget-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.widget-scroll::-webkit-scrollbar-track,
+.widget-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.widget-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: 999px;
+}
+
+.widget-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+}
+
 .btn-cta {
   background: var(--accent);
   color: var(--accent-ink);
@@ -346,8 +374,12 @@ tr.checkboard-settled td::after {
   top: 50%;
   right: 0;
   left: 0;
-  border-top: 1px solid var(--settled);
+  border-top: 2.5px solid currentColor;
   pointer-events: none;
+}
+
+tr.checkboard-settled td:first-child::after {
+  left: 0.75rem;
 }
 
 input[type="number"]::-webkit-inner-spin-button,

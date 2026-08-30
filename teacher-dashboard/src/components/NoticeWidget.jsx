@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react"
 import { fontFamilyCss } from "../constants/fonts"
+import { widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import WidgetSettings from "./WidgetSettings"
@@ -10,7 +11,6 @@ import {
   createDraftSlot,
   getOffsetsFromSelection,
   findActiveSchedule,
-  formatClock,
   formatSlotsLabel,
   getScheduleSlots,
   runsToPlain,
@@ -117,11 +117,14 @@ export function NoticeSettings({ widget, onChange }) {
 
   const applySettings = (patch) => {
     onChange(patch)
-    const flushed = editorFlushRef.current?.()
-    const range = selectionRef.current
-    if (!range) return
     const runPatch = widgetPatchToRunPatch(patch)
-    const styled = applyStyleToRange(flushed ?? (notice.mode === "manual" ? manualDraftRuns : draftRuns), range.start, range.end, runPatch)
+    if (!Object.keys(runPatch).length) return
+    const flushed = editorFlushRef.current?.()
+    const currentRuns = flushed ?? (notice.mode === "manual" ? manualDraftRuns : draftRuns)
+    const range = selectionRef.current
+    const styled = range
+      ? applyStyleToRange(currentRuns, range.start, range.end, runPatch)
+      : applyStyleToRange(currentRuns, 0, runsToPlain(currentRuns).length, runPatch)
 
     if (notice.mode === "manual") {
       setManualDraftRuns(styled)
@@ -278,7 +281,14 @@ export function NoticeSettings({ widget, onChange }) {
   }
 
   const editorClassName =
-    "min-h-24 w-full resize-y overflow-y-auto whitespace-pre-wrap rounded-md border border-line bg-sunken px-2.5 py-2 text-ink outline-none focus:border-line-strong"
+    "widget-scroll min-h-24 w-full resize-y overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-2.5 py-2 outline-none focus:border-line-strong"
+  const editorInk = contentColor(widget.textColor, theme)
+  const editorBg = widgetBackground(widget.bgColor, theme)
+  const editorStyle = {
+    color: editorInk,
+    caretColor: editorInk,
+    backgroundColor: editorBg || "var(--sunken)",
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -360,6 +370,7 @@ export function NoticeSettings({ widget, onChange }) {
               theme={theme}
               ariaLabel="공지 내용"
               className={editorClassName}
+              style={editorStyle}
               onSelectionChange={rememberSelection}
               onChangeRuns={setDraftRuns}
               flushRef={editorFlushRef}
@@ -463,6 +474,7 @@ export function NoticeSettings({ widget, onChange }) {
               theme={theme}
               ariaLabel="공지 내용"
               className={editorClassName}
+              style={editorStyle}
               onSelectionChange={rememberSelection}
               onChangeRuns={setManualDraftRuns}
               flushRef={editorFlushRef}
@@ -578,10 +590,7 @@ export default function NoticeWidget({ widget, textScale = 1 }) {
   const hasLive = runsToPlain(liveRuns).length > 0
 
   return (
-    <div className="relative flex h-full items-center justify-center px-5">
-      <span className="absolute top-2 right-3 text-[11px] text-faint tabular-nums">
-        {formatClock(now)}
-      </span>
+    <div className="widget-scroll relative flex h-full items-center justify-center overflow-y-auto px-5">
       {hasLive ? (
         <RichNoticeText
           runs={liveRuns}
@@ -591,7 +600,7 @@ export default function NoticeWidget({ widget, textScale = 1 }) {
           onSelectionChange={() => {}}
         />
       ) : (
-        <p className="text-[13px] text-faint">
+        <p className="widget-empty text-[13px]">
           {notice.mode === "manual" ? "표시할 공지가 없습니다." : "지금은 표시할 공지가 없습니다."}
         </p>
       )}

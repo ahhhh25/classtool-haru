@@ -52,12 +52,17 @@ function useFlipRows(ids) {
   return bodyRef
 }
 
+function tableInk(widget, theme, settled = false) {
+  const ink = contentColor(widget.textColor, theme)
+  return settled ? `color-mix(in srgb, ${ink} 42%, transparent)` : ink
+}
+
 function tableTextStyle(widget, theme, settled = false, textScale = 1) {
   return {
     fontFamily: fontFamilyCss(widget.fontFamily),
     fontSize: `${Number(widget.fontSize) * textScale}pt`,
     fontWeight: widget.bold ? 700 : 400,
-    color: settled ? "var(--settled)" : contentColor(widget.textColor, theme),
+    color: tableInk(widget, theme, settled),
     textDecoration: settled ? "none" : widget.underline ? "underline" : "none",
     textUnderlineOffset: widget.underline && !settled ? "0.16em" : undefined,
     lineHeight: textScale > 1 ? 1.2 : 1.35,
@@ -312,10 +317,10 @@ export default function CheckboardWidget({ widget, onChange, addItemOpen, onClos
       {cloud.linked && cloud.error && (
         <p className="shrink-0 border-b border-line px-3 py-1.5 text-[12px] text-muted">{cloud.error}</p>
       )}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="widget-scroll min-h-0 flex-1 overflow-auto">
         {empty ? (
           <div className="flex h-full items-center justify-center px-5 text-center">
-            <p className="text-[13px] text-faint">
+            <p className="widget-empty text-[13px]">
               설정 → 학생 명단 관리에서 학생을 등록하고, + 로 체크 항목을 추가하세요.
             </p>
           </div>
@@ -347,6 +352,7 @@ export default function CheckboardWidget({ widget, onChange, addItemOpen, onClos
                     key={student.id}
                     data-flip-id={student.id}
                     className={settled ? "checkboard-settled" : "hover:bg-hover"}
+                    style={settled ? { color: tableInk(widget, theme, true) } : undefined}
                   >
                     <td
                       className="w-px border-b border-line py-0.5 pr-2 pl-3 whitespace-nowrap"
@@ -367,18 +373,17 @@ export default function CheckboardWidget({ widget, onChange, addItemOpen, onClos
                                 checks: toggleCheck(board.checks, student.id, item.id),
                               })
                             }
-                            className={`inline-flex items-center justify-center rounded-md transition-colors hover:bg-hover ${
-                              settled ? "text-settled" : "text-icon hover:text-ink"
-                            }`}
+                            className="inline-flex items-center justify-center rounded-md transition-colors hover:bg-hover"
                             style={{
                               width: `${36 * textScale}px`,
                               height: `${36 * textScale}px`,
+                              color: tableInk(widget, theme, settled),
                             }}
                           >
                             {checked ? (
-                              <Check size={26 * textScale} strokeWidth={1.5} />
+                              <Check size={26 * textScale} strokeWidth={2} />
                             ) : (
-                              <Square size={26 * textScale} strokeWidth={1.5} />
+                              <Square size={26 * textScale} strokeWidth={2} />
                             )}
                           </button>
                         </td>

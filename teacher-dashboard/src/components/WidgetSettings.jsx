@@ -29,6 +29,10 @@ export default function WidgetSettings({
   const iconButton = bare ? "size-7" : "size-9"
   const iconSize = bare ? 13 : 15
   const swatch = bare ? "size-3.5" : "size-5"
+  const swatchClass = (selected) =>
+    `${swatch} relative shrink-0 rounded-full border transition-transform ${
+      selected ? "scale-125 border-2 border-white" : "border-line hover:border-line-strong"
+    }`
 
   const sizeSelect = (
     <select
@@ -109,9 +113,7 @@ export default function WidgetSettings({
             aria-pressed={selected}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onChange({ bgColor: swatchItem.id })}
-            className={`${swatch} shrink-0 rounded-full border transition-transform ${
-              selected ? "scale-110 border-ink" : "border-line hover:border-line-strong"
-            }`}
+            className={swatchClass(selected)}
             style={
               swatchItem.id === DEFAULT_BG_COLOR
                 ? {
@@ -139,9 +141,7 @@ export default function WidgetSettings({
             aria-pressed={selected}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onChange({ textColor: swatchItem.hex })}
-            className={`${swatch} shrink-0 rounded-full border transition-transform ${
-              selected ? "scale-110 border-ink" : "border-line hover:border-line-strong"
-            }`}
+            className={swatchClass(selected)}
             style={{ backgroundColor: swatchFill(swatchItem, theme) }}
           />
         )

@@ -4,7 +4,7 @@ import { fontFamilyCss } from "../constants/fonts"
 import { chromeInkOnBackground, widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
-import AnnouncementWidget, { AnnouncementSettings } from "./AnnouncementWidget"
+import AnnouncementWidget from "./AnnouncementWidget"
 import CheckboardWidget, { CheckboardSettings } from "./CheckboardWidget"
 import ClockWidget from "./ClockWidget"
 import DateClockSettings from "./DateClockSettings"
@@ -49,13 +49,14 @@ export default function WidgetCard({
   const [addItemOpen, setAddItemOpen] = useState(false)
   const { theme } = useTheme()
   const transparent = widget.type === "date" || widget.type === "clock"
-  const customBg = widgetBackground(widget.bgColor, theme)
+  const customBg = widget.type === "announcement" ? null : widgetBackground(widget.bgColor, theme)
   const chromeInk = chromeInkOnBackground(customBg)
   const cardStyle = customBg
     ? {
         backgroundColor: customBg,
         "--widget": customBg,
         "--widget-header": customBg,
+        "--chrome-ink": chromeInk,
       }
     : undefined
 
@@ -142,15 +143,17 @@ export default function WidgetCard({
                 <LockOpen size={14} strokeWidth={1.5} />
               )}
             </TitleIcon>
-            <TitleIcon
-              label="설정"
-              ink={chromeInk}
-              className={widget.settingsOpen ? (chromeInk ? "bg-active" : "bg-active text-ink") : ""}
-              aria-pressed={widget.settingsOpen}
-              onClick={onToggleSettings}
-            >
-              <Settings size={14} strokeWidth={1.5} />
-            </TitleIcon>
+            {widget.type !== "announcement" && (
+              <TitleIcon
+                label="설정"
+                ink={chromeInk}
+                className={widget.settingsOpen ? (chromeInk ? "bg-active" : "bg-active text-ink") : ""}
+                aria-pressed={widget.settingsOpen}
+                onClick={onToggleSettings}
+              >
+                <Settings size={14} strokeWidth={1.5} />
+              </TitleIcon>
+            )}
             {!focused && (
               <TitleIcon label="닫기" align="right" ink={chromeInk} onClick={onClose}>
                 <X size={14} strokeWidth={1.5} />
@@ -202,11 +205,11 @@ export default function WidgetCard({
         </div>
       </article>
 
-      {widget.settingsOpen && (
+      {widget.settingsOpen && widget.type !== "announcement" && (
         <SettingsModal
           title={`${widget.title} 설정`}
           onClose={onToggleSettings}
-          fit={widget.type === "announcement" || widget.type === "date" || widget.type === "clock"}
+          fit={widget.type === "date" || widget.type === "clock"}
           headerExtra={
             widget.type === "notice" ? (
               <div className="flex min-w-0 items-center gap-2">
@@ -241,8 +244,6 @@ export default function WidgetCard({
         >
           {widget.type === "notice" ? (
             <NoticeSettings widget={widget} onChange={onChangeSettings} />
-          ) : widget.type === "announcement" ? (
-            <AnnouncementSettings widget={widget} onChange={onChangeSettings} />
           ) : widget.type === "checkboard" ? (
             <CheckboardSettings widget={widget} onChange={onChangeSettings} />
           ) : widget.type === "date" || widget.type === "clock" ? (

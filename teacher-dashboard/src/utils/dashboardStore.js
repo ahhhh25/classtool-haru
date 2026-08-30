@@ -39,12 +39,13 @@ function hydrateAnnouncementItem(raw) {
     fontFamily: raw.fontFamily,
     fontSize: raw.fontSize,
     textColor: raw.textColor,
+    bgColor: raw.bgColor,
     bold: raw.bold,
     underline: raw.underline,
   })
   const id = typeof raw.id === "string" && raw.id ? raw.id : item.id
   if (Array.isArray(raw.runs)) {
-    return { ...item, id, runs: raw.runs.filter((run) => run && typeof run.text === "string") }
+    return { ...item, id, bgColor: item.bgColor, runs: raw.runs.filter((run) => run && typeof run.text === "string") }
   }
   const text = typeof raw.text === "string" ? raw.text : ""
   return {

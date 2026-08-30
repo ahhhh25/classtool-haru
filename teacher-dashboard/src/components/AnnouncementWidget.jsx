@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Settings, Trash2 } from "lucide-react"
+import { widgetBackground } from "../constants/palette"
+import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import { createAnnouncementItem, reorderAnnouncements } from "../utils/announcement"
 import {
@@ -30,13 +32,16 @@ function itemRuns(item) {
 }
 
 function toolbarFromItem(item, selection) {
-  return toolbarWidgetFromRuns(itemRuns(item), selection, {
-    fontSize: item.fontSize,
-    fontFamily: item.fontFamily,
-    textColor: item.textColor,
-    bold: item.bold,
-    underline: item.underline,
-  })
+  return {
+    ...toolbarWidgetFromRuns(itemRuns(item), selection, {
+      fontSize: item.fontSize,
+      fontFamily: item.fontFamily,
+      textColor: item.textColor,
+      bold: item.bold,
+      underline: item.underline,
+    }),
+    bgColor: item.bgColor,
+  }
 }
 
 function isReorderHandle(target) {
@@ -58,6 +63,7 @@ function draftFromWidget(widget) {
     fontFamily: widget.fontFamily,
     fontSize: widget.fontSize,
     textColor: widget.textColor,
+    bgColor: widget.bgColor,
     bold: widget.bold,
     underline: widget.underline,
   })
@@ -76,14 +82,6 @@ function RichRuns({ runs, theme, className, textScale = 1 }) {
   )
 }
 
-export function AnnouncementSettings({ widget, onChange }) {
-  return (
-    <div className="px-4 py-3">
-      <WidgetSettings widget={widget} onChange={onChange} compact bare inline fields={["bg"]} />
-    </div>
-  )
-}
-
 function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, onClose, onConfirm, theme }) {
   const draftRef = useRef(draft)
   const selectionRef = useRef(null)
@@ -95,8 +93,12 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
   const applyStyle = (patch) => {
     const flushed = editorFlushRef.current?.()
     const currentRuns = flushed ?? itemRuns(draftRef.current)
-    const range = selectionRef.current
     const runPatch = widgetPatchToRunPatch(patch)
+    if (!Object.keys(runPatch).length) {
+      onChange({ ...patch })
+      return
+    }
+    const range = selectionRef.current
     const nextRuns = range
       ? applyStyleToRange(currentRuns, range.start, range.end, runPatch)
       : applyStyleToRange(currentRuns, 0, runsToPlain(currentRuns).length, runPatch)
@@ -120,7 +122,12 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
             setSelection(range)
           }}
           onChangeRuns={(nextRuns) => onChange({ runs: nextRuns })}
-          className="h-[8.5rem] overflow-y-auto whitespace-pre-wrap rounded-md border border-line bg-sunken px-3 py-2.5 text-ink outline-none focus:border-line-strong"
+          className="widget-scroll h-[8.5rem] overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-3 py-2.5 outline-none focus:border-line-strong"
+          style={{
+            color: contentColor(draft.textColor, theme),
+            caretColor: contentColor(draft.textColor, theme),
+            backgroundColor: widgetBackground(draft.bgColor, theme) || "var(--sunken)",
+          }}
         />
         {hint && <p className="text-[12px] text-muted">{hint}</p>}
         <div className="flex justify-end">
@@ -208,6 +215,7 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
     textColor: item.textColor,
     bold: item.bold,
     underline: item.underline,
+    bgColor: item.bgColor,
   })
 
   const confirmEditor = () => {
@@ -230,10 +238,10 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="widget-scroll min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {board.items.length === 0 && (
           <div className="flex h-full items-center justify-center px-5 text-center">
-            <p className="text-[13px] text-faint">+로 알림을 추가하세요.</p>
+            <p className="widget-empty text-[13px]">+로 알림을 추가하세요.</p>
           </div>
         )}
         <ul ref={listRef}>
@@ -249,14 +257,17 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
                 onPointerMove={onItemPointerMove}
                 onPointerUp={onItemPointerUp}
                 onPointerCancel={onItemPointerUp}
-                className={`group no-drag relative ${index > 0 ? "border-t border-line" : ""} ${
+                className={`group no-drag relative mb-1 rounded-md ${
                   dragging ? "opacity-40" : ""
                 } ${dragId ? "cursor-grabbing select-none" : "cursor-grab"}`}
+                style={{
+                  backgroundColor: widgetBackground(item.bgColor, theme) || undefined,
+                }}
               >
                 {showLine && (
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-ink" />
                 )}
-                <div className="flex items-start gap-1 py-2">
+                <div className="flex items-start gap-1 px-1 py-2">
                   {text ? (
                     <RichRuns
                       runs={itemRuns(item)}
@@ -274,7 +285,11 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
                       onClick={() =>
                         setEditor({
                           mode: "edit",
-                          item: { ...item, runs: itemRuns(item).map((run) => ({ ...run })) },
+                          item: {
+                            ...item,
+                            bgColor: item.bgColor,
+                            runs: itemRuns(item).map((run) => ({ ...run })),
+                          },
                         })
                       }
                       className="flex size-6 items-center justify-center rounded-md text-faint transition-colors hover:bg-hover hover:text-muted"
@@ -322,7 +337,8 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
                 patch.fontSize != null ||
                 patch.textColor != null ||
                 patch.bold != null ||
-                patch.underline != null)
+                patch.underline != null ||
+                patch.bgColor != null)
             ) {
               onChange(rememberStyle(item))
             }

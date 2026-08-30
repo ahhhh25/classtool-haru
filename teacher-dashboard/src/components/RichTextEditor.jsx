@@ -46,6 +46,7 @@ export default function RichTextEditor({
   onChangeRuns,
   onSelectionChange,
   className,
+  style,
   ariaLabel,
   onKeyDown,
   flushRef,
@@ -129,6 +130,7 @@ export default function RichTextEditor({
         onChangeRuns(syncRunsWithPlain(runsRef.current, plain, fallbackStyle))
       }}
       className={className}
+      style={style}
     />
   )
 }

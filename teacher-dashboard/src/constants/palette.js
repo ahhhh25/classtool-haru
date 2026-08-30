@@ -17,7 +17,7 @@ export const DEFAULT_TEXT_COLOR = TEXT_PALETTE[0].hex
 /** Widget card backgrounds. `hex` is dark mode; `lightHex` is light mode. */
 export const BG_PALETTE = [
   { id: "default", label: "기본", hex: null, lightHex: null },
-  { id: "navy", hex: "#2F8BC4", lightHex: "#9ED4F5" },
+  { id: "navy", hex: "#3B5674", lightHex: "#B7C6D4" },
   { id: "forest", hex: "#3BB36A", lightHex: "#9FE6B8" },
   { id: "peach", hex: "#F08A4B", lightHex: "#FFC9A3" },
   { id: "lemon", hex: "#E8C21A", lightHex: "#FFE56A" },
