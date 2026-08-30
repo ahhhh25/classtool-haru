@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 
-export default function SettingsModal({ title, headerExtra, onClose, children, fit = false }) {
+export default function SettingsModal({ title, headerExtra, onClose, children, fit = false, tall = false }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") onClose()
@@ -24,7 +24,7 @@ export default function SettingsModal({ title, headerExtra, onClose, children, f
         aria-modal="true"
         aria-labelledby="widget-settings-title"
         className={`theme-surface relative z-10 flex w-[min(840px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-line bg-widget shadow-modal ${
-          fit ? "" : "max-h-[min(80vh,740px)]"
+          tall ? "max-h-[min(94vh,1080px)]" : fit ? "" : "max-h-[min(80vh,740px)]"
         }`}
       >
         <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4">
@@ -42,7 +42,13 @@ export default function SettingsModal({ title, headerExtra, onClose, children, f
             <X size={16} strokeWidth={1.5} />
           </button>
         </header>
-        <div className={`flex flex-col ${fit ? "" : "min-h-0 flex-1 overflow-hidden"}`}>{children}</div>
+        <div
+          className={`flex flex-col ${
+            fit ? "" : tall ? "min-h-0 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"
+          }`}
+        >
+          {children}
+        </div>
       </div>
     </div>,
     document.body,

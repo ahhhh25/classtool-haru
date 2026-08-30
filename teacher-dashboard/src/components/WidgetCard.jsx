@@ -4,6 +4,7 @@ import { fontFamilyCss } from "../constants/fonts"
 import { chromeInkOnBackground, widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
+import { isKioskLinked, useKioskLink } from "../utils/kioskLinkStore"
 import AnnouncementWidget from "./AnnouncementWidget"
 import CheckboardWidget, { CheckboardSettings } from "./CheckboardWidget"
 import ClockWidget from "./ClockWidget"
@@ -48,6 +49,8 @@ export default function WidgetCard({
 }) {
   const [addItemOpen, setAddItemOpen] = useState(false)
   const { theme } = useTheme()
+  const kioskLink = useKioskLink()
+  const checkboardLinked = widget.type === "checkboard" && isKioskLinked(kioskLink)
   const transparent = widget.type === "date" || widget.type === "clock"
   const customBg = widget.type === "announcement" ? null : widgetBackground(widget.bgColor, theme)
   const chromeInk = chromeInkOnBackground(customBg)
@@ -210,6 +213,7 @@ export default function WidgetCard({
           title={`${widget.title} 설정`}
           onClose={onToggleSettings}
           fit={widget.type === "date" || widget.type === "clock"}
+          tall={checkboardLinked}
           headerExtra={
             widget.type === "notice" ? (
               <div className="flex min-w-0 items-center gap-2">

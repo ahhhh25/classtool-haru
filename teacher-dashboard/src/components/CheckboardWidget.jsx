@@ -9,6 +9,7 @@ import WidgetSettings from "./WidgetSettings"
 import KioskConnectPanel from "./KioskConnectPanel"
 import { useCheckboardCloud } from "../hooks/useCheckboardCloud"
 import { useSharedStudents } from "../hooks/useSharedStudents"
+import { isKioskLinked, useKioskLink } from "../utils/kioskLinkStore"
 import {
   formatItemTimestamp,
   isStudentSettled,
@@ -72,20 +73,28 @@ function tableTextStyle(widget, theme, settled = false, textScale = 1) {
 export function CheckboardSettings({ widget, onChange }) {
   const { theme } = useTheme()
   const board = widget.checkboard
+  const kioskLink = useKioskLink()
+  const linked = isKioskLinked(kioskLink)
 
   const updateBoard = (patch, extra = {}) => {
     onChange({ ...extra, checkboard: { ...board, ...patch, students: [] } })
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={`flex flex-col ${linked ? "" : "min-h-0 flex-1"}`}>
       <div className="shrink-0 bg-widget">
         <WidgetSettings widget={widget} onChange={onChange} compact bare />
       </div>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
-        {board.items.length > 0 && (
-        <section>
+      <div className={`px-4 py-5 ${linked ? "" : "min-h-0 flex-1 overflow-y-auto"}`}>
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <p className="text-[16px] text-ink">체크 목록</p>
+            <p className="text-[12px] leading-relaxed text-muted">
+              위젯에 표시할 체크 항목을 관리합니다.
+            </p>
+          </div>
+          {board.items.length > 0 && (
           <ul className="space-y-1.5">
             {board.items.map((item) => (
               <li
@@ -137,8 +146,8 @@ export function CheckboardSettings({ widget, onChange }) {
               </li>
             ))}
           </ul>
+          )}
         </section>
-        )}
 
         <KioskConnectPanel widget={widget} />
       </div>

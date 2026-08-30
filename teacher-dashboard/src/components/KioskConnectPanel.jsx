@@ -31,7 +31,7 @@ export default function KioskConnectPanel({ widget }) {
     }
     let cancelled = false
     QRCode.toDataURL(kioskUrl, {
-      width: 220,
+      width: 176,
       margin: 1,
       color: { dark: "#111111", light: "#ffffff" },
     }).then((data) => {
@@ -65,13 +65,15 @@ export default function KioskConnectPanel({ widget }) {
   }
 
   return (
-    <section className="space-y-3">
-      <p className="text-[16px] text-ink">학생용 체크 화면 연결</p>
-      <p className="text-[12px] leading-relaxed text-muted">
-        교실 태블릿에서 이 학급만 열리도록 연결합니다. QR과 주소는 비밀이므로
-        학급 바깥에 공유하지 마세요. 이 브라우저가 학급 소유자이며, 다른 컴퓨터에서
-        자동으로 이어지지 않습니다.
-      </p>
+    <section className="space-y-3 border-t border-line pt-8">
+      <div className="space-y-1">
+        <p className="text-[16px] text-ink">학생용 체크 화면 연결</p>
+        <p className="text-[12px] leading-relaxed text-muted">
+          학생용 체크 화면 연결 버튼을 누른 후 교실 태블릿에서 QR을 찍거나 주소를
+          열면 이 학급의 학생용 체크 화면이 열립니다. 학생이 자기 이름을 눌러
+          체크하면, 대시보드의 이 체크 위젯에 바로 반영됩니다.
+        </p>
+      </div>
 
       {!configured && (
         <p className="text-[12px] leading-relaxed text-muted">
@@ -94,21 +96,26 @@ export default function KioskConnectPanel({ widget }) {
           onClick={() => run("connect", () => connectKiosk(widget))}
           className="h-10 rounded-md border border-line px-3 text-[13px] text-icon hover:bg-hover hover:text-ink disabled:opacity-50"
         >
-          {busy === "connect" ? "연결 중…" : "학생용 화면 연결"}
+          {busy === "connect" ? "연결 중…" : "학생용 체크 화면 연결"}
         </button>
       )}
 
       {configured && linked && (
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-4 rounded-xl border border-line px-3 py-3">
           {qrUrl && (
             <img
               src={qrUrl}
               alt="학생용 체크 화면 QR"
-              className="size-44 shrink-0 rounded-md border border-line bg-white p-1"
+              className="size-36 shrink-0 rounded-md border border-line bg-white p-1"
             />
           )}
           <div className="min-w-0 flex-1">
-            <div className="space-y-1">
+            <div className="space-y-1 text-[12px] leading-relaxed text-muted">
+              <p className="text-ink">태블릿에서</p>
+              <p>1. QR을 찍거나 아래 주소를 연다</p>
+              <p>2. 자기 이름을 눌러 체크한다</p>
+            </div>
+            <div className="mt-3 space-y-1">
               <div className="flex items-center gap-1">
                 <p className="text-[11px] text-faint">연결 주소</p>
                 <button
@@ -122,29 +129,35 @@ export default function KioskConnectPanel({ widget }) {
               </div>
               <p className="break-all text-[12px] text-ink">{kioskUrl}</p>
             </div>
-            <div className="mt-3 border-t border-line pt-3">
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  disabled={Boolean(busy)}
-                  onClick={() => setConfirm("rotate")}
-                  className="h-9 rounded-md border border-line px-3 text-[12px] text-icon hover:bg-hover hover:text-ink disabled:opacity-50"
-                >
-                  연결 주소 다시 만들기
-                </button>
-                <button
-                  type="button"
-                  disabled={Boolean(busy)}
-                  onClick={() => setConfirm("disconnect")}
-                  className="h-9 rounded-md border border-line px-3 text-[12px] text-icon hover:bg-hover hover:text-ink disabled:opacity-50"
-                >
-                  연결 해제
-                </button>
-              </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => setConfirm("rotate")}
+                className="h-9 rounded-md border border-line px-3 text-[12px] text-icon hover:bg-hover hover:text-ink disabled:opacity-50"
+              >
+                연결 주소 다시 만들기
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => setConfirm("disconnect")}
+                className="h-9 rounded-md border border-line px-3 text-[12px] text-icon hover:bg-hover hover:text-ink disabled:opacity-50"
+              >
+                연결 해제
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      <div className="space-y-1">
+        <p className="text-[12px] text-ink">주의사항</p>
+        <p className="text-[12px] leading-relaxed text-muted">
+          QR과 주소는 비밀이므로 학급 바깥에 공유하지 마세요. 이 브라우저가 학급
+          소유자이며, 다른 컴퓨터에서 자동으로 이어지지 않습니다.
+        </p>
+      </div>
 
       {message && <p className="text-[12px] text-muted">{message}</p>}
 
