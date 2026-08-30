@@ -1,9 +1,10 @@
 import { Lock, LockOpen, Maximize2, Minimize2, Plus, Settings, X } from "lucide-react"
 import { useState } from "react"
 import { fontFamilyCss } from "../constants/fonts"
+import { chromeInkOnBackground, widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
-import AnnouncementWidget from "./AnnouncementWidget"
+import AnnouncementWidget, { AnnouncementSettings } from "./AnnouncementWidget"
 import CheckboardWidget, { CheckboardSettings } from "./CheckboardWidget"
 import ClockWidget from "./ClockWidget"
 import DateClockSettings from "./DateClockSettings"
@@ -15,9 +16,15 @@ import WidgetSettings from "./WidgetSettings"
 const iconBtn =
   "no-drag relative flex size-6 items-center justify-center rounded text-icon transition-colors hover:bg-hover hover:text-ink"
 
-function TitleIcon({ label, className = "", align = "center", children, ...props }) {
+function TitleIcon({ label, className = "", align = "center", ink, children, ...props }) {
   return (
-    <button type="button" aria-label={label} className={`group ${iconBtn} ${className}`} {...props}>
+    <button
+      type="button"
+      aria-label={label}
+      className={`group ${iconBtn} ${className}`}
+      style={ink ? { color: ink } : undefined}
+      {...props}
+    >
       {children}
       <span
         className={`pointer-events-none absolute top-[calc(100%+4px)] z-20 whitespace-nowrap rounded-md border border-line bg-widget px-1.5 py-0.5 text-[11px] text-ink opacity-0 shadow-widget transition-opacity delay-75 group-hover:opacity-100 ${
@@ -42,19 +49,29 @@ export default function WidgetCard({
   const [addItemOpen, setAddItemOpen] = useState(false)
   const { theme } = useTheme()
   const transparent = widget.type === "date" || widget.type === "clock"
+  const customBg = widgetBackground(widget.bgColor, theme)
+  const chromeInk = chromeInkOnBackground(customBg)
+  const cardStyle = customBg
+    ? {
+        backgroundColor: customBg,
+        "--widget": customBg,
+        "--widget-header": customBg,
+      }
+    : undefined
 
   return (
     <>
       <article
         className={`group/chrome flex h-full flex-col overflow-hidden ${
           transparent
-            ? `relative bg-transparent ${
+            ? `relative ${customBg ? "rounded-xl" : "bg-transparent"} ${
                 focused || widget.locked
                   ? "cursor-default"
                   : "widget-drag-handle cursor-grab active:cursor-grabbing"
               }`
             : "theme-surface rounded-xl border border-line bg-widget shadow-widget"
         }`}
+        style={cardStyle}
       >
         <header
           className={`z-10 flex items-center px-1.5 ${
@@ -74,7 +91,10 @@ export default function WidgetCard({
           }`}
         >
           {!transparent && (
-            <h2 className="min-w-0 flex-1 truncate pr-2 pl-1 text-[13px] text-ink-soft select-none">
+            <h2
+              className="min-w-0 flex-1 truncate pr-2 pl-1 text-[13px] text-ink-soft select-none"
+              style={chromeInk ? { color: chromeInk } : undefined}
+            >
               {widget.title}
             </h2>
           )}
@@ -83,6 +103,7 @@ export default function WidgetCard({
             {(widget.type === "checkboard" || widget.type === "announcement") && (
               <TitleIcon
                 label="추가"
+                ink={chromeInk}
                 onClick={() => setAddItemOpen(true)}
               >
                 <Plus size={14} strokeWidth={1.5} />
@@ -92,6 +113,7 @@ export default function WidgetCard({
               <>
                 <TitleIcon
                   label={focused ? "축소" : "확대"}
+                  ink={chromeInk}
                   aria-pressed={focused}
                   onClick={onToggleFocus}
                 >
@@ -101,12 +123,17 @@ export default function WidgetCard({
                     <Maximize2 size={14} strokeWidth={1.5} />
                   )}
                 </TitleIcon>
-                <span className="mx-0.5 h-3 w-px bg-line" aria-hidden="true" />
+                <span
+                  className="mx-0.5 h-3 w-px bg-line"
+                  aria-hidden="true"
+                  style={chromeInk ? { backgroundColor: chromeInk, opacity: 0.35 } : undefined}
+                />
               </>
             )}
             <TitleIcon
               label={widget.locked ? "잠금 해제" : "잠금"}
-              className={widget.locked ? "text-ink" : ""}
+              ink={chromeInk}
+              className={widget.locked && !chromeInk ? "text-ink" : ""}
               onClick={onToggleLock}
             >
               {widget.locked ? (
@@ -115,18 +142,17 @@ export default function WidgetCard({
                 <LockOpen size={14} strokeWidth={1.5} />
               )}
             </TitleIcon>
-            {widget.type !== "announcement" && (
-              <TitleIcon
-                label="설정"
-                className={widget.settingsOpen ? "bg-active text-ink" : ""}
-                aria-pressed={widget.settingsOpen}
-                onClick={onToggleSettings}
-              >
-                <Settings size={14} strokeWidth={1.5} />
-              </TitleIcon>
-            )}
+            <TitleIcon
+              label="설정"
+              ink={chromeInk}
+              className={widget.settingsOpen ? (chromeInk ? "bg-active" : "bg-active text-ink") : ""}
+              aria-pressed={widget.settingsOpen}
+              onClick={onToggleSettings}
+            >
+              <Settings size={14} strokeWidth={1.5} />
+            </TitleIcon>
             {!focused && (
-              <TitleIcon label="닫기" align="right" onClick={onClose}>
+              <TitleIcon label="닫기" align="right" ink={chromeInk} onClick={onClose}>
                 <X size={14} strokeWidth={1.5} />
               </TitleIcon>
             )}
@@ -176,11 +202,11 @@ export default function WidgetCard({
         </div>
       </article>
 
-      {widget.settingsOpen && widget.type !== "announcement" && (
+      {widget.settingsOpen && (
         <SettingsModal
           title={`${widget.title} 설정`}
           onClose={onToggleSettings}
-          fit={widget.type === "date" || widget.type === "clock"}
+          fit={widget.type === "announcement" || widget.type === "date" || widget.type === "clock"}
           headerExtra={
             widget.type === "notice" ? (
               <div className="flex min-w-0 items-center gap-2">
@@ -215,6 +241,8 @@ export default function WidgetCard({
         >
           {widget.type === "notice" ? (
             <NoticeSettings widget={widget} onChange={onChangeSettings} />
+          ) : widget.type === "announcement" ? (
+            <AnnouncementSettings widget={widget} onChange={onChangeSettings} />
           ) : widget.type === "checkboard" ? (
             <CheckboardSettings widget={widget} onChange={onChangeSettings} />
           ) : widget.type === "date" || widget.type === "clock" ? (

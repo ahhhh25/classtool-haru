@@ -1,6 +1,6 @@
 import { DEFAULT_DISPLAY_STYLE, normalizeDisplayStyle } from "../constants/displayStyles"
 import { DEFAULT_FONT } from "../constants/fonts"
-import { DEFAULT_TEXT_COLOR } from "../constants/palette"
+import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import { createAnnouncementItem, createAnnouncementState } from "./announcement"
 import { createCheckboardState } from "./checkboard"
 import { createNoticeState, plainToRuns } from "./richText"
@@ -85,6 +85,7 @@ function hydrateWidget(raw) {
     fontSize: Number(raw.fontSize) || preset.fontSize,
     fontFamily: raw.fontFamily || DEFAULT_FONT.id,
     textColor: raw.textColor || DEFAULT_TEXT_COLOR,
+    bgColor: raw.bgColor || DEFAULT_BG_COLOR,
     bold: Boolean(raw.bold),
     underline: Boolean(raw.underline),
     displayStyle:

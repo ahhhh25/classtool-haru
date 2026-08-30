@@ -284,8 +284,16 @@ export function NoticeSettings({ widget, onChange }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-line bg-widget">
         <WidgetSettings
-          widget={toolbarWidgetFromRuns(composeRuns, selection, toolbarFallback)}
-          onChange={applySettings}
+          widget={{
+            ...toolbarWidgetFromRuns(composeRuns, selection, toolbarFallback),
+            bgColor: widget.bgColor,
+          }}
+          onChange={(patch) => {
+            if (patch.bgColor != null) onChange({ bgColor: patch.bgColor })
+            const rest = { ...patch }
+            delete rest.bgColor
+            if (Object.keys(rest).length) applySettings(rest)
+          }}
           compact
           bare
           endSlot={

@@ -1,6 +1,6 @@
 import { DEFAULT_DISPLAY_STYLE } from "../constants/displayStyles"
 import { DEFAULT_FONT } from "../constants/fonts"
-import { DEFAULT_TEXT_COLOR } from "../constants/palette"
+import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import { createAnnouncementState } from "./announcement"
 import { createCheckboardState } from "./checkboard"
 import { createNoticeState } from "./richText"
@@ -59,6 +59,7 @@ function chromeFromPreset(type, id) {
     fontSize: preset.fontSize,
     fontFamily: DEFAULT_FONT.id,
     textColor: DEFAULT_TEXT_COLOR,
+    bgColor: DEFAULT_BG_COLOR,
     bold: false,
     underline: false,
     displayStyle: type === "date" || type === "clock" ? DEFAULT_DISPLAY_STYLE : undefined,

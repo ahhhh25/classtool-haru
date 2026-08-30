@@ -1,6 +1,13 @@
 import { Bold, Underline } from "lucide-react"
 import { FONT_OPTIONS, FONT_SIZE_PRESETS } from "../constants/fonts"
-import { TEXT_PALETTE, swatchFill } from "../constants/palette"
+import {
+  BG_PALETTE,
+  DEFAULT_BG_COLOR,
+  DEFAULT_TEXT_COLOR,
+  TEXT_PALETTE,
+  bgSwatchFill,
+  swatchFill,
+} from "../constants/palette"
 import { useTheme } from "../theme/ThemeProvider"
 
 const fieldLabel = "mb-1.5 block text-[11px] tracking-wide text-muted uppercase"
@@ -89,6 +96,37 @@ export default function WidgetSettings({
     </div>
   )
 
+  const bgSwatches = (
+    <div className={`flex items-center gap-1 ${bare ? "h-7" : "h-9"}`}>
+      {BG_PALETTE.map((swatchItem) => {
+        const current = widget.bgColor || DEFAULT_BG_COLOR
+        const selected = current === swatchItem.id
+        return (
+          <button
+            key={swatchItem.id}
+            type="button"
+            aria-label={swatchItem.label}
+            aria-pressed={selected}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onChange({ bgColor: swatchItem.id })}
+            className={`${swatch} shrink-0 rounded-full border transition-transform ${
+              selected ? "scale-110 border-ink" : "border-line hover:border-line-strong"
+            }`}
+            style={
+              swatchItem.id === DEFAULT_BG_COLOR
+                ? {
+                    backgroundImage:
+                      "linear-gradient(135deg, transparent 49%, var(--line-strong) 49%, var(--line-strong) 51%, transparent 51%)",
+                    backgroundColor: "var(--widget)",
+                  }
+                : { backgroundColor: bgSwatchFill(swatchItem, theme) }
+            }
+          />
+        )
+      })}
+    </div>
+  )
+
   const colorSwatches = (
     <div className={`flex items-center gap-1 ${bare ? "h-7" : "h-9"}`}>
       {TEXT_PALETTE.map((swatchItem) => {
@@ -112,6 +150,41 @@ export default function WidgetSettings({
   )
 
   const show = (name) => !fields || fields.includes(name)
+  const showBg = fields ? fields.includes("bg") : true
+  const paletteLabel = `shrink-0 text-muted ${bare ? "text-[11px]" : "text-[12px]"}`
+  const resetColors = () => {
+    const patch = {}
+    if (show("color")) patch.textColor = DEFAULT_TEXT_COLOR
+    if (showBg) patch.bgColor = DEFAULT_BG_COLOR
+    if (Object.keys(patch).length) onChange(patch)
+  }
+  const paletteRow = (show("color") || showBg) && (
+    <div className={`flex items-center ${bare ? "h-7 gap-2" : "h-9 gap-2.5"}`}>
+      {show("color") && (
+        <>
+          <span className={paletteLabel}>글자색</span>
+          {colorSwatches}
+        </>
+      )}
+      {show("color") && showBg && <span className="h-5 w-px shrink-0 bg-line" aria-hidden="true" />}
+      {showBg && (
+        <>
+          <span className={paletteLabel}>배경색</span>
+          {bgSwatches}
+        </>
+      )}
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={resetColors}
+        className={`shrink-0 rounded-md border border-line px-2 text-icon hover:bg-hover hover:text-ink ${
+          bare ? "h-7 text-[11px]" : "h-8 text-[12px]"
+        }`}
+      >
+        색상 초기화
+      </button>
+    </div>
+  )
 
   if (bare) {
     return (
@@ -120,7 +193,7 @@ export default function WidgetSettings({
           {show("size") && sizeSelect}
           {show("font") && fontSelect}
           {show("style") && styleButtons}
-          {show("color") && colorSwatches}
+          {paletteRow}
           {endSlot}
         </div>
       </div>
@@ -142,10 +215,7 @@ export default function WidgetSettings({
           <span className={fieldLabel}>글자 스타일</span>
           {styleButtons}
         </div>
-        <div className="shrink-0">
-          <span className={fieldLabel}>글자색</span>
-          {colorSwatches}
-        </div>
+        {(show("color") || showBg) && <div className="shrink-0">{paletteRow}</div>}
       </div>
     </div>
   )

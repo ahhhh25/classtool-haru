@@ -76,6 +76,14 @@ function RichRuns({ runs, theme, className, textScale = 1 }) {
   )
 }
 
+export function AnnouncementSettings({ widget, onChange }) {
+  return (
+    <div className="px-4 py-3">
+      <WidgetSettings widget={widget} onChange={onChange} compact bare inline fields={["bg"]} />
+    </div>
+  )
+}
+
 function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, onClose, onConfirm, theme }) {
   const draftRef = useRef(draft)
   const selectionRef = useRef(null)
