@@ -1,0 +1,57 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['classId', 'createdAt']) && newData.child('classId').isString() && newData.child('createdAt').isNumber()"
+      }
+    },
+
+    "classes": {
+      "$classId": {
+        ".read": "auth != null && data.child('ownerUid').val() === auth.uid",
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerUid').val() === auth.uid) || data.child('ownerUid').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['ownerUid', 'createdAt']) && newData.child('ownerUid').val() === auth.uid"
+      }
+    },
+
+    "classData": {
+      "$classId": {
+        ".read": "auth != null && root.child('classes').child($classId).child('ownerUid').val() === auth.uid",
+        ".write": "auth != null && root.child('classes').child($classId).child('ownerUid').val() === auth.uid"
+      }
+    },
+
+    "kioskIndex": {
+      "$kioskToken": {
+        ".read": true,
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerUid').val() === auth.uid) || data.child('ownerUid').val() === auth.uid)",
+        ".validate": "$kioskToken.length >= 22 && newData.hasChildren(['classId', 'ownerUid']) && newData.child('ownerUid').val() === auth.uid"
+      }
+    },
+
+    "joinCodes": {
+      "$code": {
+        ".read": "data.exists() && data.child('expiresAt').val() > now",
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerUid').val() === auth.uid) || data.child('ownerUid').val() === auth.uid)",
+        ".validate": "$code.matches(/^[A-Z2-9]{8}$/) && newData.hasChildren(['kioskToken', 'classId', 'ownerUid', 'expiresAt'])"
+      }
+    },
+
+    "live": {
+      "$kioskToken": {
+        ".read": true,
+        ".write": "auth != null && root.child('kioskIndex').child($kioskToken).child('ownerUid').val() === auth.uid",
+        "completions": {
+          "$itemId": {
+            "$studentId": {
+              ".write": "root.child('live').child($kioskToken).child('students').child($studentId).exists() && root.child('live').child($kioskToken).child('checklists').child($itemId).exists()",
+              ".validate": "newData.hasChildren(['done', 'at']) && newData.child('done').isBoolean() && newData.child('at').isNumber()"
+            }
+          }
+        }
+      }
+    }
+  }
+}
