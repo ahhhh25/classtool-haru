@@ -4,6 +4,7 @@ import { Maximize2, Minimize2, Pause, Play, RotateCcw, Timer, Watch } from "luci
 import { loadJson, saveJson } from "../../utils/safeStorage"
 import { createTimerAudio } from "../../utils/timerAudio"
 import { SFX_VOLUME_STEPS, clampSfxVolume, loadSfxVolume, TIMER_PREFS_KEY } from "../../utils/sfxVolume"
+import { subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
 import ConfettiBurst from "./ConfettiBurst"
 
 const PRESETS = [
@@ -193,6 +194,105 @@ export default function TimerTool() {
     return undefined
   }, [immersive])
 
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      const payload = msg.payload || {}
+      if (msg.type === SYNC.TIMER_MODE) {
+        const next = payload.mode === "stopwatch" ? "stopwatch" : "timer"
+        cancelAnimationFrame(frameRef.current)
+        tensionOnRef.current = false
+        audioRef.current?.stopTension()
+        finishedRef.current = false
+        setMode(next)
+        setRunning(false)
+        setPaused(true)
+        setFinished(false)
+        setBurstId(0)
+        setElapsedMs(0)
+        setRemainingMs(Number(payload.durationMs) || 0)
+        resumeElapsedRef.current = 0
+        return
+      }
+      if (msg.type === SYNC.TIMER_SET) {
+        if (payload.mode === "stopwatch" || payload.mode === "timer") setMode(payload.mode)
+        if (payload.durationMs != null) setDurationMs(Number(payload.durationMs) || 0)
+        if (payload.remainingMs != null) setRemainingMs(Number(payload.remainingMs) || 0)
+        if (payload.endAt != null) endAtRef.current = Number(payload.endAt)
+        if (payload.running != null) setRunning(Boolean(payload.running))
+        if (payload.paused != null) setPaused(Boolean(payload.paused))
+        return
+      }
+      if (msg.type === SYNC.TIMER_START) {
+        const now = Number(payload.startedAt) || Date.now()
+        finishedRef.current = false
+        setFinished(false)
+        if (payload.mode === "stopwatch") {
+          setMode("stopwatch")
+          endAtRef.current = now
+          resumeElapsedRef.current = 0
+          setElapsedMs(0)
+        } else {
+          if (payload.mode === "timer") setMode("timer")
+          const base = Number(payload.remainingMs ?? payload.duration ?? payload.durationMs) || 0
+          if (payload.durationMs != null) setDurationMs(Number(payload.durationMs) || 0)
+          endAtRef.current = now + base
+          setRemainingMs(base)
+        }
+        setPaused(false)
+        setRunning(true)
+        return
+      }
+      if (msg.type === SYNC.TIMER_RESUME) {
+        const now = Number(payload.startedAt) || Date.now()
+        finishedRef.current = false
+        setFinished(false)
+        if (payload.mode === "stopwatch") {
+          setMode("stopwatch")
+          resumeElapsedRef.current = Number(payload.elapsedMs) || 0
+          endAtRef.current = now
+          setElapsedMs(resumeElapsedRef.current)
+        } else {
+          const base = Number(payload.remainingMs ?? payload.duration) || 0
+          endAtRef.current = now + base
+          setRemainingMs(base)
+          if (payload.durationMs != null) setDurationMs(Number(payload.durationMs) || 0)
+        }
+        setPaused(false)
+        setRunning(true)
+        return
+      }
+      if (msg.type === SYNC.TIMER_PAUSE) {
+        if (payload.mode === "stopwatch") {
+          const elapsed = Number(payload.elapsedMs) || 0
+          resumeElapsedRef.current = elapsed
+          setElapsedMs(elapsed)
+        } else if (payload.remainingMs != null) {
+          setRemainingMs(Number(payload.remainingMs) || 0)
+        }
+        setPaused(true)
+        tensionOnRef.current = false
+        audioRef.current?.stopTension()
+        return
+      }
+      if (msg.type === SYNC.TIMER_RESET) {
+        cancelAnimationFrame(frameRef.current)
+        tensionOnRef.current = false
+        audioRef.current?.stopTension()
+        finishedRef.current = false
+        setRunning(false)
+        setPaused(true)
+        setFinished(false)
+        setBurstId(0)
+        setElapsedMs(0)
+        const dur = payload.durationMs != null ? Number(payload.durationMs) || 0 : 0
+        if (payload.durationMs != null) setDurationMs(dur)
+        setRemainingMs(payload.mode === "stopwatch" ? 0 : dur)
+        resumeElapsedRef.current = 0
+        if (payload.mode === "stopwatch" || payload.mode === "timer") setMode(payload.mode)
+      }
+    })
+  }, [])
+
   const switchMode = (next) => {
     if (next === mode) return
     cancelAnimationFrame(frameRef.current)
@@ -206,6 +306,7 @@ export default function TimerTool() {
     setElapsedMs(0)
     setRemainingMs(durationMs)
     resumeElapsedRef.current = 0
+    syncSend(SYNC.TIMER_MODE, { mode: next, durationMs })
   }
 
   const addTime = (seconds) => {
@@ -216,7 +317,16 @@ export default function TimerTool() {
     if (applied === 0) return
     if (running && !paused) endAtRef.current += applied
     setRemainingMs(nextRemaining)
-    setDurationMs((value) => Math.max(nextRemaining, value + applied))
+    const nextDuration = Math.max(nextRemaining, durationMs + applied)
+    setDurationMs(nextDuration)
+    syncSend(SYNC.TIMER_SET, {
+      mode: "timer",
+      remainingMs: nextRemaining,
+      durationMs: nextDuration,
+      running,
+      paused,
+      endAt: running && !paused ? endAtRef.current : undefined,
+    })
   }
 
   const applyMinSec = (nextMinutes, nextSeconds) => {
@@ -226,12 +336,27 @@ export default function TimerTool() {
     const next = (minutes * 60 + seconds) * 1000
     if (running && paused) {
       const delta = next - remainingMs
+      const nextDuration = Math.max(durationMs + Math.max(delta, 0), next)
       setRemainingMs(next)
-      setDurationMs((value) => Math.max(value + Math.max(delta, 0), next))
+      setDurationMs(nextDuration)
+      syncSend(SYNC.TIMER_SET, {
+        mode: "timer",
+        remainingMs: next,
+        durationMs: nextDuration,
+        running,
+        paused,
+      })
       return
     }
     setDurationMs(next)
     setRemainingMs(next)
+    syncSend(SYNC.TIMER_SET, {
+      mode: "timer",
+      remainingMs: next,
+      durationMs: next,
+      running,
+      paused,
+    })
   }
 
   const start = () => {
@@ -239,16 +364,31 @@ export default function TimerTool() {
     audioRef.current?.unlock()
     finishedRef.current = false
     setFinished(false)
+    const now = Date.now()
+    const resuming = running && paused
     if (mode === "timer") {
       const base = running ? remainingMs : durationMs
       if (base <= 0) return
-      endAtRef.current = Date.now() + base
+      endAtRef.current = now + base
       setRemainingMs(base)
+      syncSend(resuming ? SYNC.TIMER_RESUME : SYNC.TIMER_START, {
+        mode,
+        duration: base,
+        durationMs,
+        remainingMs: base,
+        startedAt: now,
+      })
     } else if (!running) {
-      endAtRef.current = Date.now()
+      endAtRef.current = now
       resumeElapsedRef.current = 0
+      syncSend(SYNC.TIMER_START, { mode, startedAt: now, elapsedMs: 0 })
     } else {
-      endAtRef.current = Date.now()
+      endAtRef.current = now
+      syncSend(SYNC.TIMER_RESUME, {
+        mode,
+        startedAt: now,
+        elapsedMs: resumeElapsedRef.current,
+      })
     }
     setPaused(false)
     setRunning(true)
@@ -256,15 +396,19 @@ export default function TimerTool() {
 
   const pause = () => {
     if (!running || paused) return
+    let remaining = remainingMs
+    let elapsed = elapsedMs
     if (mode === "timer") {
-      const left = Math.max(0, endAtRef.current - Date.now())
-      setRemainingMs(left)
+      remaining = Math.max(0, endAtRef.current - Date.now())
+      setRemainingMs(remaining)
     } else {
-      resumeElapsedRef.current = Date.now() - endAtRef.current + resumeElapsedRef.current
-      setElapsedMs(resumeElapsedRef.current)
+      elapsed = Date.now() - endAtRef.current + resumeElapsedRef.current
+      resumeElapsedRef.current = elapsed
+      setElapsedMs(elapsed)
     }
     setPaused(true)
     stopTension()
+    syncSend(SYNC.TIMER_PAUSE, { mode, remainingMs: remaining, elapsedMs: elapsed, durationMs })
   }
 
   const reset = () => {
@@ -278,6 +422,7 @@ export default function TimerTool() {
     setElapsedMs(0)
     setRemainingMs(mode === "timer" ? durationMs : 0)
     resumeElapsedRef.current = 0
+    syncSend(SYNC.TIMER_RESET, { mode, durationMs })
   }
 
   const shell = (

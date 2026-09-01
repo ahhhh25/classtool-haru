@@ -18,6 +18,7 @@ import {
   todayNoticeTitle,
 } from "../../utils/editorStyle"
 import { loadJson, saveJson } from "../../utils/safeStorage"
+import { flushSyncMessage, scheduleSyncMessage, subscribeSync, SYNC } from "../../utils/syncChannel"
 import ConfirmDialog from "../ConfirmDialog"
 import WidgetSettings from "../WidgetSettings"
 
@@ -90,6 +91,8 @@ export default function NoticeBookTool() {
   const noticesRef = useRef(notices)
   const activeIdRef = useRef(activeId)
   const saveTimer = useRef(null)
+  const applyingRemote = useRef(false)
+  const applyNoticeRef = useRef(() => {})
 
   noticesRef.current = notices
   activeIdRef.current = activeId
@@ -101,6 +104,36 @@ export default function NoticeBookTool() {
     saveJson(NOTICES_KEY, next)
   }, [])
 
+  const noticePayload = useCallback(() => {
+    const editor = editorRef.current
+    const id = activeIdRef.current
+    let list = noticesRef.current
+    if (editor && id) {
+      const html = editor.innerHTML
+      list = list.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              content: html,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      )
+    }
+    return { notices: list, activeId: id }
+  }, [])
+
+  const pushNoticeSync = useCallback((immediate = false) => {
+    if (applyingRemote.current) return
+    if (immediate) flushSyncMessage(SYNC.NOTICE_UPDATE, noticePayload)
+    else scheduleSyncMessage(SYNC.NOTICE_UPDATE, noticePayload, 1000)
+  }, [noticePayload])
+
+  const flushNoticeWith = (id) => {
+    if (applyingRemote.current) return
+    flushSyncMessage(SYNC.NOTICE_UPDATE, () => ({ notices: noticesRef.current, activeId: id }))
+  }
+
   const pruneExpired = useCallback(() => {
     if (!loadJson(AUTO_DELETE_KEY, false)) return
     const today = kstDateKey()
@@ -111,12 +144,16 @@ export default function NoticeBookTool() {
       const created = emptyNotice()
       persist([created])
       setActiveId(created.id)
+      flushNoticeWith(created.id)
       return
     }
     persist(kept)
     if (!kept.some((item) => item.id === activeIdRef.current)) {
       setActiveId(kept[0].id)
     }
+    flushNoticeWith(
+      kept.some((item) => item.id === activeIdRef.current) ? activeIdRef.current : kept[0].id,
+    )
   }, [persist])
 
   useEffect(() => {
@@ -165,6 +202,31 @@ export default function NoticeBookTool() {
     },
     [theme],
   )
+  applyNoticeRef.current = applyNotice
+
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      if (msg.type !== SYNC.NOTICE_UPDATE) return
+      const raw = msg.payload?.notices
+      const list = Array.isArray(raw) ? raw.map(hydrateNotice).filter(Boolean) : []
+      if (!list.length) return
+      applyingRemote.current = true
+      persist(list)
+      const requested = msg.payload?.activeId
+      const nextId =
+        requested && list.some((item) => item.id === requested)
+          ? requested
+          : list.some((item) => item.id === activeIdRef.current)
+            ? activeIdRef.current
+            : list[0].id
+      setActiveId(nextId)
+      const notice = list.find((item) => item.id === nextId)
+      if (notice) applyNoticeRef.current(notice)
+      queueMicrotask(() => {
+        applyingRemote.current = false
+      })
+    })
+  }, [persist])
 
   useEffect(() => {
     if (!activeId || !notices.some((item) => item.id === activeId)) {
@@ -187,6 +249,13 @@ export default function NoticeBookTool() {
   const scheduleSave = () => {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(saveFromEditor, 600)
+    pushNoticeSync(false)
+  }
+
+  const flushEditorAndSync = () => {
+    clearTimeout(saveTimer.current)
+    saveFromEditor()
+    pushNoticeSync(true)
   }
 
   const rememberSelection = () => {
@@ -213,6 +282,7 @@ export default function NoticeBookTool() {
           : item,
       ),
     )
+    pushNoticeSync(true)
   }
 
   const changeLineHeight = (value) => {
@@ -222,6 +292,7 @@ export default function NoticeBookTool() {
         item.id === activeId ? { ...item, lineHeight: value, updatedAt: new Date().toISOString() } : item,
       ),
     )
+    pushNoticeSync(true)
   }
 
   const copyNotice = async () => {
@@ -257,6 +328,7 @@ export default function NoticeBookTool() {
     setListOpen(true)
     setSaveLabel("저장됨")
     window.setTimeout(() => setSaveLabel("저장"), 1500)
+    pushNoticeSync(true)
   }
 
   const savePublishUrl = (raw = publishUrl) => {
@@ -283,6 +355,7 @@ export default function NoticeBookTool() {
     persist([created, ...noticesRef.current])
     setActiveId(created.id)
     setListOpen(true)
+    flushNoticeWith(created.id)
   }
 
   const deleteNotice = (id) => {
@@ -295,9 +368,12 @@ export default function NoticeBookTool() {
           const created = emptyNotice()
           persist([created])
           setActiveId(created.id)
+          flushNoticeWith(created.id)
         } else {
           persist(next)
+          const nextId = activeIdRef.current === id ? next[0].id : activeIdRef.current
           if (activeIdRef.current === id) setActiveId(next[0].id)
+          flushNoticeWith(nextId)
         }
         setConfirm(null)
       },
@@ -331,7 +407,12 @@ export default function NoticeBookTool() {
                       active ? "is-active border-transparent" : "border-transparent hover:bg-hover"
                     }`}
                   >
-                    <button type="button" onClick={() => setActiveId(item.id)} className="block w-full pr-6 text-left">
+                    <button type="button" onClick={() => {
+                      clearTimeout(saveTimer.current)
+                      saveFromEditor()
+                      setActiveId(item.id)
+                      flushNoticeWith(item.id)
+                    }} className="block w-full pr-6 text-left">
                       <p className="truncate text-[13px] text-ink">{item.title || "제목 없음"}</p>
                       <p className="mt-0.5 truncate text-[11px] text-faint">
                         {titleFromContent(item.content, "내용 없음")}
@@ -462,6 +543,7 @@ export default function NoticeBookTool() {
               suppressContentEditableWarning
               className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-sunken p-6 text-ink outline-none"
               onInput={scheduleSave}
+              onBlur={flushEditorAndSync}
               onMouseUp={rememberSelection}
               onKeyUp={rememberSelection}
               onFocus={rememberSelection}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import Dashboard from "./components/Dashboard"
 import FocusMode from "./components/FocusMode"
 import SettingsPage from "./components/SettingsPage"
@@ -18,11 +19,13 @@ import {
   loadDashboard,
   saveDashboard,
 } from "./utils/dashboardStore"
+import { isHaruReceiver, subscribeSync, SYNC, syncSend, scheduleDashboardSync, flushDashboardSync } from "./utils/syncChannel"
 import { createLayoutItem, createWidget, mergeLayoutChange } from "./utils/widgets"
 
 export default function App() {
   const { theme } = useTheme()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const isReceiver = isHaruReceiver()
+  const [sidebarOpen, setSidebarOpen] = useState(!isReceiver)
   const [activeView, setActiveView] = useState(VIEWS.dashboard)
   const [pickerSub, setPickerSub] = useState("individual")
   const [pickerGroupMode, setPickerGroupMode] = useState("pick")
@@ -35,10 +38,64 @@ export default function App() {
   const [focusedWidgetId, setFocusedWidgetId] = useState(null)
   const widgetsRef = useRef(widgets)
   widgetsRef.current = widgets
+  const skipDashboardSync = useRef(true)
+  const applyingDashboardRemote = useRef(false)
 
   useEffect(() => {
+    if (isReceiver) return
     saveDashboard({ widgets, layout, stackOrder, layoutPresets })
-  }, [widgets, layout, stackOrder, layoutPresets])
+    if (skipDashboardSync.current) {
+      skipDashboardSync.current = false
+      return
+    }
+    if (applyingDashboardRemote.current) {
+      applyingDashboardRemote.current = false
+      return
+    }
+    scheduleDashboardSync()
+  }, [widgets, layout, stackOrder, layoutPresets, isReceiver])
+
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      if (msg.type === SYNC.VIEW_CHANGE) {
+        const payload = msg.payload || {}
+        if (payload.view) setActiveView(payload.view)
+        if (payload.pickerSub) setPickerSub(payload.pickerSub)
+        if (payload.pickerGroupMode) setPickerGroupMode(payload.pickerGroupMode)
+        if (payload.settingsSub) setSettingsSub(payload.settingsSub)
+        if (payload.view && payload.view !== VIEWS.dashboard) setFocusedWidgetId(null)
+        return
+      }
+      if (msg.type !== SYNC.DASHBOARD_UPDATE) return
+      applyingDashboardRemote.current = true
+      const next = loadDashboard()
+      setWidgets(next.widgets)
+      setLayout(next.layout)
+      setStackOrder(next.stackOrder)
+      setLayoutPresets(next.layoutPresets ?? [])
+      setFocusedWidgetId((id) => (next.widgets.some((widget) => widget.id === id) ? id : null))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (isReceiver) return undefined
+    const flushIfField = (event) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (target.closest("input, textarea, select, [contenteditable='true']")) {
+        flushDashboardSync()
+      }
+    }
+    document.addEventListener("focusout", flushIfField)
+    const onHidden = () => {
+      if (document.hidden) flushDashboardSync()
+    }
+    document.addEventListener("visibilitychange", onHidden)
+    return () => {
+      document.removeEventListener("focusout", flushIfField)
+      document.removeEventListener("visibilitychange", onHidden)
+    }
+  }, [isReceiver])
 
   const updateWidget = useCallback((id, patch) => {
     setWidgets((current) =>
@@ -89,8 +146,14 @@ export default function App() {
       if (!preset) return
       setLayout((items) => applyLayoutPreset(items, preset.layout))
       setActiveView(VIEWS.dashboard)
+      syncSend(SYNC.VIEW_CHANGE, {
+        view: VIEWS.dashboard,
+        pickerSub,
+        pickerGroupMode,
+        settingsSub,
+      })
     },
-    [layoutPresets],
+    [layoutPresets, pickerSub, pickerGroupMode, settingsSub],
   )
 
   const deleteLayoutPreset = useCallback((id) => {
@@ -117,9 +180,39 @@ export default function App() {
   }, [])
 
   const navigate = (view) => {
+    const nextSettings = view === VIEWS.settings ? "general" : settingsSub
     setActiveView(view)
     if (view === VIEWS.settings) setSettingsSub("general")
     if (view !== VIEWS.dashboard) setFocusedWidgetId(null)
+    syncSend(SYNC.VIEW_CHANGE, {
+      view,
+      pickerSub,
+      pickerGroupMode,
+      settingsSub: nextSettings,
+    })
+  }
+
+  const openPickerSub = (id) => {
+    setPickerSub(id)
+    setActiveView(VIEWS.picker)
+    syncSend(SYNC.VIEW_CHANGE, {
+      view: VIEWS.picker,
+      pickerSub: id,
+      pickerGroupMode,
+      settingsSub,
+    })
+  }
+
+  const openPickerGroup = (id) => {
+    setPickerSub("group")
+    setPickerGroupMode(id)
+    setActiveView(VIEWS.picker)
+    syncSend(SYNC.VIEW_CHANGE, {
+      view: VIEWS.picker,
+      pickerSub: "group",
+      pickerGroupMode: id,
+      settingsSub,
+    })
   }
 
   const focusedWidget = widgets.find((widget) => widget.id === focusedWidgetId) ?? null
@@ -138,15 +231,8 @@ export default function App() {
         onDeleteLayoutPreset={deleteLayoutPreset}
         pickerSub={pickerSub}
         pickerGroupMode={pickerGroupMode}
-        onPickerSub={(id) => {
-          setPickerSub(id)
-          setActiveView(VIEWS.picker)
-        }}
-        onPickerGroupMode={(id) => {
-          setPickerSub("group")
-          setPickerGroupMode(id)
-          setActiveView(VIEWS.picker)
-        }}
+        onPickerSub={openPickerSub}
+        onPickerGroupMode={openPickerGroup}
       />
       <div className={activeView === VIEWS.dashboard ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
         <Dashboard
@@ -174,11 +260,8 @@ export default function App() {
         <PickerTool
           sub={pickerSub}
           groupMode={pickerGroupMode}
-          onSelectSub={setPickerSub}
-          onSelectGroup={(id) => {
-            setPickerSub("group")
-            setPickerGroupMode(id)
-          }}
+          onSelectSub={openPickerSub}
+          onSelectGroup={openPickerGroup}
         />
       </div>
       {activeView === VIEWS.settings && settingsSub === "students" ? (
@@ -209,6 +292,14 @@ export default function App() {
           />
         </FocusMode>
       )}
+      {isReceiver &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] cursor-not-allowed"
+            aria-hidden
+          />,
+          document.body,
+        )}
     </div>
   )
 }

@@ -1,4 +1,12 @@
 import { gainForSfxVolume, loadSfxVolume } from "./sfxVolume"
+import { isHaruReceiver } from "./syncChannel"
+
+const SILENT_PICKER_AUDIO = {
+  unlock() {},
+  playTick() {},
+  playReveal() {},
+  dispose() {},
+}
 
 function ensureContext(state) {
   if (!state.ctx) {
@@ -34,6 +42,7 @@ function tone(ctx, dest, freq, type, at, dur, peak) {
 }
 
 export function createPickerAudio() {
+  if (isHaruReceiver()) return SILENT_PICKER_AUDIO
   const state = { ctx: null, master: null }
 
   return {

@@ -1,4 +1,15 @@
 import { gainForSfxVolume, loadSfxVolume } from "./sfxVolume"
+import { isHaruReceiver } from "./syncChannel"
+
+const SILENT_TIMER_AUDIO = {
+  unlock() {},
+  setVolume() {},
+  startTension() {},
+  updateTension() {},
+  stopTension() {},
+  playExplosion() {},
+  dispose() {},
+}
 
 const C_MAJOR = [261.63, 329.63, 392.0, 523.25]
 const G_MAJOR = [392.0, 493.88, 587.33, 783.99]
@@ -15,6 +26,7 @@ function chordForRemaining(remainingMs) {
 }
 
 export function createTimerAudio() {
+  if (isHaruReceiver()) return SILENT_TIMER_AUDIO
   let ctx = null
   let master = null
   let bgmGain = null

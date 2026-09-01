@@ -32,6 +32,7 @@ import {
   titleFromContent,
 } from "../../utils/editorStyle"
 import { loadJson, saveJson } from "../../utils/safeStorage"
+import { flushSyncMessage, scheduleSyncMessage, subscribeSync, SYNC } from "../../utils/syncChannel"
 import ConfirmDialog from "../ConfirmDialog"
 import WidgetSettings from "../WidgetSettings"
 
@@ -103,6 +104,9 @@ export default function NotepadTool({ active = true }) {
   const notesRef = useRef(notes)
   const activeIdRef = useRef(activeId)
   const saveTimer = useRef(null)
+  const applyingRemote = useRef(false)
+  const applyNoteToEditorRef = useRef(() => {})
+  const canvasApiRef = useRef(null)
 
   notesRef.current = notes
   activeIdRef.current = activeId
@@ -113,6 +117,38 @@ export default function NotepadTool({ active = true }) {
     setNotes(next)
     saveJson(NOTES_KEY, next)
   }, [])
+
+  const notepadPayload = useCallback(() => {
+    const editor = editorRef.current
+    const id = activeIdRef.current
+    let list = notesRef.current
+    if (editor && id) {
+      const html = editor.innerHTML
+      list = list.map((note) =>
+        note.id === id
+          ? {
+              ...note,
+              content: html,
+              title: titleFromContent(html),
+              canvasData: canvasApiRef.current?.getShapesJson?.() ?? note.canvasData,
+            bgMode: editor.classList.contains("lined-note-bg") ? "lined" : note.bgMode,
+            }
+          : note,
+      )
+    }
+    return { notes: list, activeId: id }
+  }, [])
+
+  const pushNotepadSync = useCallback((immediate = false) => {
+    if (applyingRemote.current) return
+    if (immediate) flushSyncMessage(SYNC.NOTEPAD_UPDATE, notepadPayload)
+    else scheduleSyncMessage(SYNC.NOTEPAD_UPDATE, notepadPayload, 1000)
+  }, [notepadPayload])
+
+  const flushNotepadWith = (id) => {
+    if (applyingRemote.current) return
+    flushSyncMessage(SYNC.NOTEPAD_UPDATE, () => ({ notes: notesRef.current, activeId: id }))
+  }
 
   const saveFromEditor = useCallback(
     (canvasData) => {
@@ -141,8 +177,12 @@ export default function NotepadTool({ active = true }) {
     scrollerRef,
     editorRef,
     enabled: active,
-    onChange: (canvasData) => saveFromEditor(canvasData),
+    onChange: (canvasData) => {
+      saveFromEditor(canvasData)
+      pushNotepadSync(false)
+    },
   })
+  canvasApiRef.current = canvas
 
   const applyNoteToEditor = useCallback(
     (note) => {
@@ -161,6 +201,31 @@ export default function NotepadTool({ active = true }) {
     },
     [canvas, theme],
   )
+  applyNoteToEditorRef.current = applyNoteToEditor
+
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      if (msg.type !== SYNC.NOTEPAD_UPDATE) return
+      const raw = msg.payload?.notes
+      const list = Array.isArray(raw) ? raw.map(hydrateNote).filter(Boolean) : []
+      if (!list.length) return
+      applyingRemote.current = true
+      persist(list)
+      const requested = msg.payload?.activeId
+      const nextId =
+        requested && list.some((note) => note.id === requested)
+          ? requested
+          : list.some((note) => note.id === activeIdRef.current)
+            ? activeIdRef.current
+            : list[0].id
+      setActiveId(nextId)
+      const note = list.find((item) => item.id === nextId)
+      if (note) applyNoteToEditorRef.current(note)
+      queueMicrotask(() => {
+        applyingRemote.current = false
+      })
+    })
+  }, [persist])
 
   useEffect(() => {
     if (!activeId || !notes.some((note) => note.id === activeId)) {
@@ -214,6 +279,13 @@ export default function NotepadTool({ active = true }) {
   const scheduleSave = () => {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => saveFromEditor(), 600)
+    pushNotepadSync(false)
+  }
+
+  const flushEditorAndSync = () => {
+    clearTimeout(saveTimer.current)
+    saveFromEditor(canvas.getShapesJson())
+    pushNotepadSync(true)
   }
 
   const rememberSelection = () => {
@@ -243,6 +315,7 @@ export default function NotepadTool({ active = true }) {
           : note,
       ),
     )
+    pushNotepadSync(true)
   }
 
   const changeLineHeight = (value) => {
@@ -253,6 +326,7 @@ export default function NotepadTool({ active = true }) {
         note.id === activeId ? { ...note, lineHeight: value, updatedAt: new Date().toISOString() } : note,
       ),
     )
+    pushNotepadSync(true)
   }
 
   const changeBackground = (mode) => {
@@ -265,6 +339,7 @@ export default function NotepadTool({ active = true }) {
         note.id === activeId ? { ...note, bgMode: mode, updatedAt: new Date().toISOString() } : note,
       ),
     )
+    pushNotepadSync(true)
   }
 
   const createNote = () => {
@@ -272,6 +347,7 @@ export default function NotepadTool({ active = true }) {
     persist([created, ...notesRef.current])
     setActiveId(created.id)
     setListOpen(true)
+    flushNotepadWith(created.id)
   }
 
   const deleteNote = (id) => {
@@ -284,9 +360,12 @@ export default function NotepadTool({ active = true }) {
           const created = emptyNote()
           persist([created])
           setActiveId(created.id)
+          flushNotepadWith(created.id)
         } else {
           persist(next)
+          const nextId = activeIdRef.current === id ? next[0].id : activeIdRef.current
           if (activeIdRef.current === id) setActiveId(next[0].id)
+          flushNotepadWith(nextId)
         }
         setConfirm(null)
       },
@@ -301,6 +380,7 @@ export default function NotepadTool({ active = true }) {
         if (editorRef.current) editorRef.current.innerHTML = ""
         canvas.clearDrawings()
         saveFromEditor("[]")
+        pushNotepadSync(true)
         setConfirm(null)
       },
     })
@@ -319,8 +399,7 @@ export default function NotepadTool({ active = true }) {
   }
 
   const saveNote = () => {
-    clearTimeout(saveTimer.current)
-    saveFromEditor(canvas.getShapesJson())
+    flushEditorAndSync()
     createNote()
     window.setTimeout(() => canvas.resizeCanvas(), 120)
   }
@@ -352,7 +431,12 @@ export default function NotepadTool({ active = true }) {
                       active ? "is-active border-transparent" : "border-transparent hover:bg-hover"
                     }`}
                   >
-                    <button type="button" onClick={() => setActiveId(note.id)} className="block w-full pr-6 text-left">
+                    <button type="button" onClick={() => {
+                      clearTimeout(saveTimer.current)
+                      saveFromEditor(canvas.getShapesJson())
+                      setActiveId(note.id)
+                      flushNotepadWith(note.id)
+                    }} className="block w-full pr-6 text-left">
                       <p className="truncate text-[13px] text-ink">{note.title || "제목 없음"}</p>
                       <p className="mt-0.5 truncate text-[11px] text-faint">
                         {titleFromContent(note.content, "내용 없음")}
@@ -620,6 +704,7 @@ export default function NotepadTool({ active = true }) {
                   suppressContentEditableWarning
                   className="relative z-10 min-h-full w-full text-ink outline-none"
                   onInput={scheduleSave}
+                  onBlur={flushEditorAndSync}
                   onBeforeInput={canvas.markTextHistory}
                   onPaste={canvas.markTextHistory}
                   onMouseUp={rememberSelection}

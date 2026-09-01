@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { useSharedStudents } from "../../hooks/useSharedStudents"
@@ -12,6 +12,7 @@ import {
 } from "../../utils/pickerUtils"
 import ConfettiBurst from "./ConfettiBurst"
 import { createPickerAudio } from "../../utils/pickerAudio"
+import { subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
 
 const NAME_TILE =
   "rounded-md border px-1 py-1 text-center text-[16px] font-semibold leading-tight sm:text-[17px]"
@@ -86,15 +87,12 @@ export default function PickerTool({
       </nav>
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-line bg-widget">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4">
-          {inGroup ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <GroupPick students={students} mode={groupMode} />
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <IndividualPick students={students} />
-            </div>
-          )}
+          <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${inGroup ? "hidden" : ""}`}>
+            <IndividualPick students={students} />
+          </div>
+          <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${inGroup ? "" : "hidden"}`}>
+            <GroupPick students={students} mode={groupMode} />
+          </div>
         </div>
       </div>
     </main>
@@ -110,6 +108,10 @@ function IndividualPick({ students }) {
   const [burstId, setBurstId] = useState(0)
   const timerRef = useRef(null)
   const audioRef = useRef(null)
+  const studentsRef = useRef(students)
+  const busyRef = useRef(false)
+  studentsRef.current = students
+  busyRef.current = busy
 
   useEffect(() => {
     audioRef.current = createPickerAudio()
@@ -119,18 +121,17 @@ function IndividualPick({ students }) {
     }
   }, [])
 
-  const run = () => {
-    if (busy || students.length === 0) return
-    const requested = Math.max(1, Number(count) || 1)
-    const available = students.filter((st) => !pickedIds.has(st.id))
-    if (available.length === 0) return
-    const winners = shuffleArray(available).slice(0, Math.min(requested, available.length))
+  const playWinners = (winners, fromRemote = false) => {
+    const list = studentsRef.current
+    if (busyRef.current || !winners?.length || list.length === 0) return
+    busyRef.current = true
     setBusy(true)
     audioRef.current?.unlock()
     let cycle = 0
+    clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       cycle += 1
-      setDisplay(students[Math.floor(Math.random() * students.length)].name)
+      setDisplay(list[Math.floor(Math.random() * list.length)].name)
       setSubText("뽑는 중...")
       audioRef.current?.playTick(cycle / 25)
       if (cycle >= 25) {
@@ -143,10 +144,60 @@ function IndividualPick({ students }) {
           return next
         })
         setBurstId(Date.now())
+        busyRef.current = false
         setBusy(false)
         audioRef.current?.playReveal()
+        if (!fromRemote) {
+          syncSend(SYNC.PICKER_RESULT, {
+            kind: "individual",
+            winners,
+            pickedIds: winners.map((w) => w.id),
+          })
+        }
       }
     }, 80)
+  }
+
+  const playWinnersRef = useRef(playWinners)
+  playWinnersRef.current = playWinners
+
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      const payload = msg.payload || {}
+      if (msg.type === SYNC.PICKER_DRAW_START && payload.kind === "individual") {
+        playWinnersRef.current(payload.winners, true)
+        return
+      }
+      if (msg.type === SYNC.PICKER_RESULT && payload.kind === "individual" && !busyRef.current) {
+        const winners = Array.isArray(payload.winners) ? payload.winners : []
+        if (winners.length) setDisplay(winners.map((w) => w.name).join(", "))
+        const ids = payload.pickedIds || winners.map((w) => w.id)
+        if (ids?.length) setPickedIds((current) => new Set([...current, ...ids]))
+        return
+      }
+      if (msg.type === SYNC.PICKER_RESET && payload.kind === "individual") {
+        clearInterval(timerRef.current)
+        busyRef.current = false
+        setBusy(false)
+        setPickedIds(new Set())
+        setDisplay("준비 완료!")
+        setSubText("")
+        return
+      }
+      if (msg.type === SYNC.PICKER_CONFIG && payload.kind === "individual" && payload.count != null) {
+        setCount(payload.count)
+      }
+    })
+  }, [])
+
+  const run = () => {
+    if (busy || students.length === 0) return
+    const requested = Math.max(1, Number(count) || 1)
+    const available = students.filter((st) => !pickedIds.has(st.id))
+    if (available.length === 0) return
+    const winners = shuffleArray(available).slice(0, Math.min(requested, available.length))
+    syncSend(SYNC.PICKER_DRAW_START, { kind: "individual", winners, count: requested })
+    playWinners(winners)
   }
 
   return (
@@ -158,7 +209,11 @@ function IndividualPick({ students }) {
             type="number"
             min={1}
             value={count}
-            onChange={(event) => setCount(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value
+              setCount(value)
+              syncSend(SYNC.PICKER_CONFIG, { kind: "individual", count: value })
+            }}
             className="h-8 w-16 rounded-md border border-line bg-sunken text-center text-ink outline-none"
           />
           명
@@ -186,6 +241,7 @@ function IndividualPick({ students }) {
             setPickedIds(new Set())
             setDisplay("준비 완료!")
             setSubText("")
+            syncSend(SYNC.PICKER_RESET, { kind: "individual" })
           }}
           className="accent-hover h-11 min-w-[8.5rem] rounded-xl border border-line px-8 text-[14px] text-icon hover:bg-hover"
         >
@@ -241,6 +297,16 @@ function GroupPick({ students, mode }) {
   const [fullscreen, setFullscreen] = useState(false)
   const timers = useRef([])
   const audioRef = useRef(null)
+  const studentsRef = useRef(students)
+  const busyRef = useRef(false)
+  const orderBusyRef = useRef(false)
+  const makeBusyRef = useRef(false)
+  const totalRef = useRef(total)
+  studentsRef.current = students
+  busyRef.current = busy
+  orderBusyRef.current = orderShuffling
+  makeBusyRef.current = shuffling
+  totalRef.current = total
 
   useEffect(() => {
     audioRef.current = createPickerAudio()
@@ -250,17 +316,16 @@ function GroupPick({ students, mode }) {
     }
   }, [])
 
-  const runPick = () => {
-    const available = []
-    for (let i = 1; i <= total; i += 1) if (!picked.has(i)) available.push(i)
-    if (available.length === 0 || busy) return
-    const winner = shuffleArray(available)[0]
+  const playPick = (winner, fromRemote = false) => {
+    const groupTotal = totalRef.current
+    if (winner == null || busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     audioRef.current?.unlock()
     let cycle = 0
     const id = setInterval(() => {
       cycle += 1
-      setDisplay(`${Math.floor(Math.random() * total) + 1} 모둠`)
+      setDisplay(`${Math.floor(Math.random() * groupTotal) + 1} 모둠`)
       setStatus("뽑는 중...")
       audioRef.current?.playTick(cycle / 25)
       if (cycle >= 25) {
@@ -268,58 +333,159 @@ function GroupPick({ students, mode }) {
         setDisplay(`${winner} 모둠`)
         setPicked((current) => {
           const next = new Set([...current, winner])
-          setStatus(`${next.size}/${total}`)
+          setStatus(`${next.size}/${groupTotal}`)
           return next
         })
         setBurstId(Date.now())
+        busyRef.current = false
         setBusy(false)
         audioRef.current?.playReveal()
+        if (!fromRemote) syncSend(SYNC.PICKER_RESULT, { kind: "pick", winner })
       }
     }, 80)
     timers.current.push(id)
   }
 
-  const runOrder = () => {
-    if (orderShuffling) return
-    const finalOrder = shuffleArray(Array.from({ length: orderTotal }, (_, i) => i + 1))
+  const playOrder = (finalOrder, fromRemote = false) => {
+    if (!Array.isArray(finalOrder) || orderBusyRef.current) return
+    orderBusyRef.current = true
     setOrderShuffling(true)
     audioRef.current?.unlock()
     let elapsed = 0
     const id = setInterval(() => {
-      setOrderNums(shuffleArray(Array.from({ length: orderTotal }, (_, i) => i + 1)))
+      setOrderNums(shuffleArray(Array.from({ length: finalOrder.length }, (_, i) => i + 1)))
       elapsed += 80
       audioRef.current?.playTick(elapsed / 1200)
       if (elapsed >= 1200) {
         clearInterval(id)
         setOrderNums(finalOrder)
+        orderBusyRef.current = false
         setOrderShuffling(false)
         setOrderBurstId(Date.now())
         audioRef.current?.playReveal()
+        if (!fromRemote) syncSend(SYNC.PICKER_RESULT, { kind: "order", orderNums: finalOrder })
       }
     }, 80)
     timers.current.push(id)
   }
 
-  const runMake = () => {
-    if (students.length === 0 || students.length < makeTotal || shuffling) return
-    const finalGroups = computeAutomaticGroups(students, makeTotal, balance)
+  const playMake = (finalGroups, fromRemote = false) => {
+    const list = studentsRef.current
+    if (!Array.isArray(finalGroups) || makeBusyRef.current) return
+    makeBusyRef.current = true
     setShuffling(true)
     audioRef.current?.unlock()
     let elapsed = 0
     const id = setInterval(() => {
-      const random = Array.from({ length: makeTotal }, () => [])
-      shuffleArray(students).forEach((st, idx) => random[idx % makeTotal].push(st))
+      const random = Array.from({ length: finalGroups.length }, () => [])
+      shuffleArray(list).forEach((st, idx) => random[idx % finalGroups.length].push(st))
       setGroups(random)
       elapsed += 100
       audioRef.current?.playTick(elapsed / 1200)
       if (elapsed >= 1200) {
         clearInterval(id)
         setGroups(finalGroups)
+        makeBusyRef.current = false
         setShuffling(false)
         audioRef.current?.playReveal()
+        if (!fromRemote) syncSend(SYNC.PICKER_RESULT, { kind: "create", groups: finalGroups })
       }
     }, 100)
     timers.current.push(id)
+  }
+
+  const playPickRef = useRef(playPick)
+  const playOrderRef = useRef(playOrder)
+  const playMakeRef = useRef(playMake)
+  playPickRef.current = playPick
+  playOrderRef.current = playOrder
+  playMakeRef.current = playMake
+
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      const payload = msg.payload || {}
+      if (msg.type === SYNC.PICKER_DRAW_START) {
+        if (payload.kind === "pick") playPickRef.current(payload.winner, true)
+        if (payload.kind === "order") playOrderRef.current(payload.orderNums, true)
+        if (payload.kind === "create") playMakeRef.current(payload.groups, true)
+        return
+      }
+      if (msg.type === SYNC.PICKER_RESULT && payload.kind === "pick" && !busyRef.current && payload.winner != null) {
+        setDisplay(`${payload.winner} 모둠`)
+        setPicked((current) => new Set([...current, payload.winner]))
+        return
+      }
+      if (msg.type === SYNC.PICKER_RESULT && payload.kind === "order" && !orderBusyRef.current && payload.orderNums) {
+        setOrderNums(payload.orderNums)
+        return
+      }
+      if (msg.type === SYNC.PICKER_RESULT && payload.kind === "create" && !makeBusyRef.current && payload.groups) {
+        setGroups(payload.groups)
+        return
+      }
+      if (msg.type === SYNC.PICKER_RESET) {
+        if (payload.kind === "pick") {
+          timers.current.forEach(clearInterval)
+          busyRef.current = false
+          setBusy(false)
+          setPicked(new Set())
+          setDisplay("준비 완료!")
+          setStatus("")
+        }
+        if (payload.kind === "order") {
+          timers.current.forEach(clearInterval)
+          orderBusyRef.current = false
+          setOrderShuffling(false)
+          setOrderNums(Array.from({ length: payload.orderTotal || totalRef.current }, (_, i) => i + 1))
+        }
+        if (payload.kind === "create") {
+          timers.current.forEach(clearInterval)
+          makeBusyRef.current = false
+          setShuffling(false)
+          setGroups(null)
+          setFullscreen(false)
+        }
+        return
+      }
+      if (msg.type === SYNC.PICKER_CONFIG) {
+        if (payload.kind === "pick" && payload.total != null) {
+          setTotal(payload.total)
+          setPicked(new Set())
+        }
+        if (payload.kind === "order" && payload.orderTotal != null) {
+          setOrderTotal(payload.orderTotal)
+          setOrderNums(Array.from({ length: payload.orderTotal }, (_, i) => i + 1))
+        }
+        if (payload.kind === "create") {
+          if (payload.makeTotal != null) setMakeTotal(payload.makeTotal)
+          if (payload.balance != null) setBalance(Boolean(payload.balance))
+          if (payload.fullscreen != null) setFullscreen(Boolean(payload.fullscreen))
+        }
+      }
+    })
+  }, [])
+
+  const runPick = () => {
+    const available = []
+    for (let i = 1; i <= total; i += 1) if (!picked.has(i)) available.push(i)
+    if (available.length === 0 || busy) return
+    const winner = shuffleArray(available)[0]
+    syncSend(SYNC.PICKER_DRAW_START, { kind: "pick", winner, total })
+    playPick(winner)
+  }
+
+  const runOrder = () => {
+    if (orderShuffling) return
+    const finalOrder = shuffleArray(Array.from({ length: orderTotal }, (_, i) => i + 1))
+    syncSend(SYNC.PICKER_DRAW_START, { kind: "order", orderNums: finalOrder, orderTotal })
+    playOrder(finalOrder)
+  }
+
+  const runMake = () => {
+    if (students.length === 0 || students.length < makeTotal || shuffling) return
+    const finalGroups = computeAutomaticGroups(students, makeTotal, balance)
+    syncSend(SYNC.PICKER_DRAW_START, { kind: "create", groups: finalGroups, makeTotal, balance })
+    playMake(finalGroups)
   }
 
   return (
@@ -335,6 +501,7 @@ function GroupPick({ students, mode }) {
                 setTotal(n)
                 setPicked(new Set())
                 saveGroupPrefs({ pickTotal: n, total: n })
+                syncSend(SYNC.PICKER_CONFIG, { kind: "pick", total: n })
               }}
               className="h-8 rounded-md border border-line bg-sunken px-2 text-ink"
             >
@@ -388,6 +555,7 @@ function GroupPick({ students, mode }) {
                 setPicked(new Set())
                 setDisplay("준비 완료!")
                 setStatus("")
+                syncSend(SYNC.PICKER_RESET, { kind: "pick" })
               }}
               className="accent-hover h-11 min-w-[8.5rem] rounded-xl border border-line px-8 text-[14px] text-icon hover:bg-hover"
             >
@@ -408,6 +576,7 @@ function GroupPick({ students, mode }) {
                 setOrderTotal(n)
                 setOrderNums(Array.from({ length: n }, (_, i) => i + 1))
                 saveGroupPrefs({ orderTotal: n, total: n })
+                syncSend(SYNC.PICKER_CONFIG, { kind: "order", orderTotal: n })
               }}
               className="h-8 rounded-md border border-line bg-sunken px-2 text-ink"
             >
@@ -451,6 +620,7 @@ function GroupPick({ students, mode }) {
               type="button"
               onClick={() => {
                 setOrderNums(Array.from({ length: orderTotal }, (_, i) => i + 1))
+                syncSend(SYNC.PICKER_RESET, { kind: "order", orderTotal })
               }}
               className="accent-hover h-11 min-w-[8.5rem] rounded-xl border border-line px-8 text-[14px] text-icon hover:bg-hover"
             >
@@ -471,6 +641,7 @@ function GroupPick({ students, mode }) {
                   const n = Number(event.target.value)
                   setMakeTotal(n)
                   saveGroupPrefs({ makeTotal: n, total: n })
+                  syncSend(SYNC.PICKER_CONFIG, { kind: "create", makeTotal: n })
                 }}
                 className="h-8 rounded-md border border-line bg-widget px-2 text-ink"
               >
@@ -482,7 +653,15 @@ function GroupPick({ students, mode }) {
               </select>
             </label>
             <label className="flex items-center gap-2 text-[12px] text-ink">
-              <input type="checkbox" checked={balance} onChange={(event) => setBalance(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={balance}
+                onChange={(event) => {
+                  const on = event.target.checked
+                  setBalance(on)
+                  syncSend(SYNC.PICKER_CONFIG, { kind: "create", balance: on })
+                }}
+              />
               남녀 성별 균등 배정
             </label>
           </div>
@@ -502,6 +681,7 @@ function GroupPick({ students, mode }) {
               onClick={() => {
                 setGroups(null)
                 setFullscreen(false)
+                syncSend(SYNC.PICKER_RESET, { kind: "create" })
               }}
               className="accent-hover h-11 min-w-[8.5rem] rounded-xl border border-line px-8 text-[14px] text-icon hover:bg-hover"
             >
@@ -510,7 +690,10 @@ function GroupPick({ students, mode }) {
             <button
               type="button"
               disabled={!groups || shuffling}
-              onClick={() => setFullscreen(true)}
+              onClick={() => {
+                setFullscreen(true)
+                syncSend(SYNC.PICKER_CONFIG, { kind: "create", fullscreen: true })
+              }}
               className="accent-hover h-11 min-w-[8.5rem] rounded-xl border border-line px-8 text-[14px] text-icon hover:bg-hover disabled:opacity-40"
             >
               크게 보기
@@ -518,7 +701,13 @@ function GroupPick({ students, mode }) {
           </div>
           {fullscreen &&
             createPortal(
-              <GroupMakeFullscreen groups={groups} onClose={() => setFullscreen(false)} />,
+              <GroupMakeFullscreen
+                groups={groups}
+                onClose={() => {
+                  setFullscreen(false)
+                  syncSend(SYNC.PICKER_CONFIG, { kind: "create", fullscreen: false })
+                }}
+              />,
               document.body,
             )}
         </div>
