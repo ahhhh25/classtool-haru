@@ -341,7 +341,7 @@ export default function TimerTool() {
 
         {mode === "timer" && (
           <div className="mt-8 w-full max-w-5xl">
-            <div className="timer-progress-track h-2 w-full overflow-hidden rounded-full">
+            <div className="timer-progress-track h-3.5 w-full overflow-hidden rounded-full">
               <div
                 className={`timer-progress-fill h-full w-full rounded-full ${lastThree ? "is-final" : ""}`}
                 style={{ transform: `scaleX(${progress})` }}

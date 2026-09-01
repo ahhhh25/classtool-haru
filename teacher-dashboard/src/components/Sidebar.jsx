@@ -65,6 +65,7 @@ export default function Sidebar({
   const [savingPreset, setSavingPreset] = useState(false)
   const [presetName, setPresetName] = useState("")
   const [listOpen, setListOpen] = useState(false)
+  const [pickerGroupOpen, setPickerGroupOpen] = useState(false)
   const presetNameRef = useRef(null)
   const expandOnOpenRef = useRef(null)
 
@@ -72,9 +73,11 @@ export default function Sidebar({
     if (open) {
       if (expandOnOpenRef.current === VIEWS.dashboard) {
         setDashOpen(true)
+        setWidgetMenuOpen(true)
         setPickerOpen(false)
       } else if (expandOnOpenRef.current === VIEWS.picker) {
         setPickerOpen(true)
+        setPickerGroupOpen(true)
         setDashOpen(false)
       } else {
         setDashOpen(false)
@@ -85,6 +88,7 @@ export default function Sidebar({
     }
     setDashOpen(false)
     setPickerOpen(false)
+    setPickerGroupOpen(false)
   }, [open])
 
   useEffect(() => {
@@ -168,7 +172,10 @@ export default function Sidebar({
                   if (hasBranch && open) {
                     onNavigate(item.id)
                     if (item.id === VIEWS.dashboard) {
-                      setDashOpen((visible) => !visible)
+                      const next = !dashOpen
+                      setDashOpen(next)
+                      setWidgetMenuOpen(next)
+                      if (!next) setPresetMenuOpen(false)
                       setPickerOpen(false)
                     } else {
                       setPickerOpen((visible) => !visible)
@@ -349,7 +356,7 @@ export default function Sidebar({
                             {sub.label}
                           </span>
                         </button>
-                        {sub.id === "group" && subActive && (
+                        {sub.id === "group" && (subActive || pickerGroupOpen) && (
                           <div className="mt-1 flex flex-col gap-1 pl-4">
                             {PICKER_GROUP_MODES.map((mode) => (
                               <button

@@ -6,6 +6,7 @@ export default function ConfirmDialog({
   message,
   confirmLabel = "확인",
   cancelLabel = "취소",
+  hideCancel = false,
   onConfirm,
   onCancel,
 }) {
@@ -27,13 +28,15 @@ export default function ConfirmDialog({
         <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">{message}</p>
         <div className="mt-5 flex gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="h-9 flex-1 rounded-lg border border-line text-[13px] text-icon transition-colors hover:bg-hover accent-hover"
-          >
-            {cancelLabel}
-          </button>
+          {!hideCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="h-9 flex-1 rounded-lg border border-line text-[13px] text-icon transition-colors hover:bg-hover accent-hover"
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             onClick={onConfirm}

@@ -11,3 +11,22 @@ export const LINE_HEIGHT_OPTIONS = [
   { value: "2.0", label: "2.0배" },
   { value: "2.5", label: "2.5배" },
 ]
+
+export const LINE_HEIGHT_MIN = 0.5
+export const LINE_HEIGHT_MAX = 2.5
+export const LINE_HEIGHT_STEP = 0.05
+
+export function parseLineHeight(value) {
+  if (!value || value === "normal") return 1
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 1
+}
+
+export function formatLineHeight(value) {
+  const clamped = Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, value))
+  return String(Math.round(clamped * 100) / 100)
+}
+
+export function nudgeLineHeight(value, direction) {
+  return formatLineHeight(parseLineHeight(value) + direction * LINE_HEIGHT_STEP)
+}

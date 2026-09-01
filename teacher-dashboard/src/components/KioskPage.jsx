@@ -142,8 +142,8 @@ export default function KioskPage() {
                     type="button"
                     aria-current={active ? "page" : undefined}
                     onClick={() => setSelectedId(item.id)}
-                    className={`kiosk-name-btn kiosk-menu-chip shrink-0 rounded-full px-3.5 py-1.5 text-[15px] leading-none ${
-                      active ? "is-active font-medium" : ""
+                    className={`kiosk-name-btn kiosk-menu-chip shrink-0 rounded-full leading-none ${
+                      active ? "is-active px-4 py-2 text-[18px] font-medium" : "px-3.5 py-1.5 text-[15px]"
                     }`}
                   >
                     {item.title}

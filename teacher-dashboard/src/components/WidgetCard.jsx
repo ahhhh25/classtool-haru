@@ -13,6 +13,7 @@ import DateWidget from "./DateWidget"
 import NoticeWidget, { NoticeSettings } from "./NoticeWidget"
 import SettingsModal from "./SettingsModal"
 import WidgetSettings from "./WidgetSettings"
+import ConfirmDialog from "./ConfirmDialog"
 
 const iconBtn =
   "no-drag relative flex size-6 items-center justify-center rounded text-icon transition-colors hover:bg-hover hover:text-ink"
@@ -48,6 +49,7 @@ export default function WidgetCard({
   onClose,
 }) {
   const [addItemOpen, setAddItemOpen] = useState(false)
+  const [lockCloseAlert, setLockCloseAlert] = useState(false)
   const { theme } = useTheme()
   const kioskLink = useKioskLink()
   const checkboardLinked = widget.type === "checkboard" && isKioskLinked(kioskLink)
@@ -158,7 +160,18 @@ export default function WidgetCard({
               </TitleIcon>
             )}
             {!focused && (
-              <TitleIcon label="닫기" align="right" ink={chromeInk} onClick={onClose}>
+              <TitleIcon
+                label="닫기"
+                align="right"
+                ink={chromeInk}
+                onClick={() => {
+                  if (widget.locked) {
+                    setLockCloseAlert(true)
+                    return
+                  }
+                  onClose()
+                }}
+              >
                 <X size={14} strokeWidth={1.5} />
               </TitleIcon>
             )}
@@ -257,6 +270,15 @@ export default function WidgetCard({
           )}
         </SettingsModal>
       )}
+      <ConfirmDialog
+        open={lockCloseAlert}
+        title="위젯 잠금"
+        message="잠금된 위젯은 닫을 수 없습니다. 잠금을 해제한 후 닫아주세요."
+        confirmLabel="확인"
+        hideCancel
+        onConfirm={() => setLockCloseAlert(false)}
+        onCancel={() => setLockCloseAlert(false)}
+      />
     </>
   )
 }

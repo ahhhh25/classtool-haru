@@ -48,8 +48,45 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
   }, [])
 
   const saveDrawingState = useCallback(() => {
-    undoStackRef.current.push(serializeShapes(shapesRef.current))
+    undoStackRef.current.push({
+      shapes: serializeShapes(shapesRef.current),
+      html: editorRef.current?.innerHTML ?? "",
+    })
     redoStackRef.current = []
+  }, [editorRef])
+
+  const restoreSnapshot = useCallback(
+    (snap) => {
+      const shapesJson = typeof snap === "string" ? snap : snap.shapes
+      const html = typeof snap === "string" ? undefined : snap.html
+      shapesRef.current = parseShapes(shapesJson)
+      if (html != null && editorRef.current) editorRef.current.innerHTML = html
+      selectedRef.current = null
+      setSelectedId(null)
+      restoreImageElements(shapesRef.current, () => {
+        redraw()
+        notifyChange()
+      })
+    },
+    [editorRef, notifyChange, redraw],
+  )
+
+  const textGroupTimer = useRef(null)
+  const textGroupRef = useRef(false)
+
+  const markTextHistory = useCallback(() => {
+    if (!textGroupRef.current) {
+      saveDrawingState()
+      textGroupRef.current = true
+    }
+    window.clearTimeout(textGroupTimer.current)
+    textGroupTimer.current = window.setTimeout(() => {
+      textGroupRef.current = false
+    }, 700)
+  }, [saveDrawingState])
+
+  const closeShapePanel = useCallback(() => {
+    setShapePanelOpen(false)
   }, [])
 
   const resizeCanvas = useCallback(() => {
@@ -128,27 +165,21 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
 
   const undo = useCallback(() => {
     if (undoStackRef.current.length === 0) return
-    redoStackRef.current.push(serializeShapes(shapesRef.current))
-    shapesRef.current = parseShapes(undoStackRef.current.pop())
-    selectedRef.current = null
-    setSelectedId(null)
-    restoreImageElements(shapesRef.current, () => {
-      redraw()
-      notifyChange()
+    redoStackRef.current.push({
+      shapes: serializeShapes(shapesRef.current),
+      html: editorRef.current?.innerHTML ?? "",
     })
-  }, [notifyChange, redraw])
+    restoreSnapshot(undoStackRef.current.pop())
+  }, [editorRef, restoreSnapshot])
 
   const redo = useCallback(() => {
     if (redoStackRef.current.length === 0) return
-    undoStackRef.current.push(serializeShapes(shapesRef.current))
-    shapesRef.current = parseShapes(redoStackRef.current.pop())
-    selectedRef.current = null
-    setSelectedId(null)
-    restoreImageElements(shapesRef.current, () => {
-      redraw()
-      notifyChange()
+    undoStackRef.current.push({
+      shapes: serializeShapes(shapesRef.current),
+      html: editorRef.current?.innerHTML ?? "",
     })
-  }, [notifyChange, redraw])
+    restoreSnapshot(redoStackRef.current.pop())
+  }, [editorRef, restoreSnapshot])
 
   const clearDrawings = useCallback(() => {
     saveDrawingState()
@@ -466,6 +497,7 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
       window.clearTimeout(timer)
       window.removeEventListener("resize", resizeCanvas)
       observer?.disconnect()
+      window.clearTimeout(textGroupTimer.current)
     }
   }, [enabled, resizeCanvas, scrollerRef])
 
@@ -478,11 +510,13 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
     setShapeType,
     shapePanelOpen,
     toggleShapePanel,
+    closeShapePanel,
     selectedId,
     loadShapes,
     getShapesJson,
     undo,
     redo,
+    markTextHistory,
     clearDrawings,
     addImage,
     resizeCanvas,

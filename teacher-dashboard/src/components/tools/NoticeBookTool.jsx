@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Copy, Maximize2, Save, Settings, Trash2, Upload, X } from "lucide-react"
 import { DEFAULT_FONT } from "../../constants/fonts"
-import { LINE_HEIGHT_OPTIONS } from "../../constants/lineHeights"
 import { DEFAULT_TEXT_COLOR } from "../../constants/palette"
 import { useTheme } from "../../theme/ThemeProvider"
+import LineHeightControl from "../LineHeightControl"
 import {
   applyBaseEditorStyle,
   applyEditorPatch,
   applyLineHeight,
+  inferNoticeDate,
+  kstDateKey,
   parseStoredSize,
   resolveFontId,
   titleFromContent,
@@ -21,6 +23,7 @@ import WidgetSettings from "../WidgetSettings"
 
 const NOTICES_KEY = "edu_notices_v1"
 const PUBLISH_URL_KEY = "edu_notice_publish_url"
+const AUTO_DELETE_KEY = "edu_notices_auto_delete_v1"
 
 function normalizeUrl(raw) {
   const trimmed = String(raw ?? "").trim()
@@ -39,6 +42,8 @@ function emptyNotice() {
     textColor: DEFAULT_TEXT_COLOR,
     bold: true,
     underline: false,
+    noticeDate: kstDateKey(),
+    kept: false,
     updatedAt: new Date().toISOString(),
   }
 }
@@ -55,6 +60,8 @@ function hydrateNotice(raw) {
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
     lineHeight: raw.lineHeight || "normal",
+    noticeDate: inferNoticeDate(raw),
+    kept: raw.kept == null ? true : Boolean(raw.kept),
   }
 }
 
@@ -75,6 +82,7 @@ export default function NoticeBookTool() {
   const [todayLabel, setTodayLabel] = useState(todayNoticeDateText)
   const [copyLabel, setCopyLabel] = useState("복사")
   const [saveLabel, setSaveLabel] = useState("저장")
+  const [autoDelete, setAutoDelete] = useState(() => Boolean(loadJson(AUTO_DELETE_KEY, false)))
   const [publishOpen, setPublishOpen] = useState(false)
   const [publishUrl, setPublishUrl] = useState(() => loadJson(PUBLISH_URL_KEY, "") || "")
   const editorRef = useRef(null)
@@ -88,9 +96,47 @@ export default function NoticeBookTool() {
   const activeNotice = notices.find((item) => item.id === activeId) ?? null
 
   const persist = useCallback((next) => {
+    noticesRef.current = next
     setNotices(next)
     saveJson(NOTICES_KEY, next)
   }, [])
+
+  const pruneExpired = useCallback(() => {
+    if (!loadJson(AUTO_DELETE_KEY, false)) return
+    const today = kstDateKey()
+    const current = noticesRef.current
+    const kept = current.filter((item) => item.kept || !item.noticeDate || item.noticeDate >= today)
+    if (kept.length === current.length) return
+    if (kept.length === 0) {
+      const created = emptyNotice()
+      persist([created])
+      setActiveId(created.id)
+      return
+    }
+    persist(kept)
+    if (!kept.some((item) => item.id === activeIdRef.current)) {
+      setActiveId(kept[0].id)
+    }
+  }, [persist])
+
+  useEffect(() => {
+    pruneExpired()
+    const timer = window.setInterval(() => {
+      setTodayLabel(todayNoticeDateText())
+      pruneExpired()
+    }, 60_000)
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setTodayLabel(todayNoticeDateText())
+        pruneExpired()
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [pruneExpired])
 
   const saveFromEditor = useCallback(() => {
     const id = activeIdRef.current
@@ -203,6 +249,11 @@ export default function NoticeBookTool() {
 
   const saveNotice = () => {
     saveFromEditor()
+    persist(
+      noticesRef.current.map((item) =>
+        item.id === activeIdRef.current ? { ...item, kept: true } : item,
+      ),
+    )
     setListOpen(true)
     setSaveLabel("저장됨")
     window.setTimeout(() => setSaveLabel("저장"), 1500)
@@ -323,22 +374,10 @@ export default function NoticeBookTool() {
               }}
               onChange={patchStyle}
             />
-            <select
-              aria-label="줄간격"
-              value={
-                LINE_HEIGHT_OPTIONS.some((option) => option.value === activeNotice?.lineHeight)
-                  ? activeNotice.lineHeight
-                  : "normal"
-              }
-              onChange={(event) => changeLineHeight(event.target.value)}
-              className="h-7 rounded-md border border-line bg-sunken px-1.5 text-[12px] text-ink outline-none"
-            >
-              {LINE_HEIGHT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  줄간격 {option.label}
-                </option>
-              ))}
-            </select>
+            <LineHeightControl
+              value={activeNotice?.lineHeight}
+              onChange={changeLineHeight}
+            />
             <button
               type="button"
               title="전체화면"
@@ -352,11 +391,12 @@ export default function NoticeBookTool() {
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-b border-line px-6 py-5">
-            <h3 className="min-w-0 flex-1 text-[36px] leading-none font-semibold tracking-tight text-ink">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line px-6 py-5">
+            <h3 className="min-w-0 text-[42px] leading-none font-semibold tracking-tight text-ink">
               {todayLabel}
             </h3>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex min-w-0 flex-col items-end gap-2">
+              <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 title="알림장 전체 복사"
@@ -398,6 +438,20 @@ export default function NoticeBookTool() {
                 <Save size={14} strokeWidth={1.5} />
                 {saveLabel}
               </button>
+            </div>
+            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-muted">
+              날짜가 지나면 알림장 내용을 자동으로 삭제
+              <input
+                type="checkbox"
+                checked={autoDelete}
+                onChange={(event) => {
+                  const on = event.target.checked
+                  setAutoDelete(on)
+                  saveJson(AUTO_DELETE_KEY, on)
+                  if (on) pruneExpired()
+                }}
+              />
+            </label>
             </div>
           </div>
 

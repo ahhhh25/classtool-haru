@@ -17,11 +17,11 @@ import {
   X,
 } from "lucide-react"
 import { DEFAULT_FONT } from "../../constants/fonts"
-import { LINE_HEIGHT_OPTIONS } from "../../constants/lineHeights"
 import { DEFAULT_TEXT_COLOR } from "../../constants/palette"
-import { DRAW_COLORS, SHAPE_TYPES } from "../../utils/notepadDrawing"
 import { useNotepadCanvas } from "../../hooks/useNotepadCanvas"
 import { useTheme } from "../../theme/ThemeProvider"
+import { DRAW_COLORS, SHAPE_TYPES } from "../../utils/notepadDrawing"
+import LineHeightControl from "../LineHeightControl"
 import {
   applyBaseEditorStyle,
   applyEditorPatch,
@@ -200,6 +200,16 @@ export default function NotepadTool({ active = true }) {
     document.addEventListener("paste", onPaste)
     return () => document.removeEventListener("paste", onPaste)
   }, [active, canvas.addImage])
+
+  useEffect(() => {
+    if (!canvas.shapePanelOpen) return undefined
+    const onPointerDown = (event) => {
+      if (event.target.closest("[data-shape-menu], [data-shape-tool]")) return
+      canvas.closeShapePanel()
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [canvas.shapePanelOpen, canvas.closeShapePanel])
 
   const scheduleSave = () => {
     clearTimeout(saveTimer.current)
@@ -387,6 +397,7 @@ export default function NotepadTool({ active = true }) {
                     type="button"
                     title={item.label}
                     onClick={() => (item.id === "shape" ? canvas.toggleShapePanel() : canvas.setTool(item.id))}
+                    data-shape-tool={item.id === "shape" ? "" : undefined}
                     className={toolBtn(active)}
                   >
                     <Icon size={14} strokeWidth={1.5} />
@@ -458,22 +469,10 @@ export default function NotepadTool({ active = true }) {
               onChange={patchStyle}
             />
 
-            <select
-              aria-label="줄간격"
-              value={
-                LINE_HEIGHT_OPTIONS.some((option) => option.value === activeNote?.lineHeight)
-                  ? activeNote.lineHeight
-                  : "normal"
-              }
-              onChange={(event) => changeLineHeight(event.target.value)}
-              className="h-7 rounded-md border border-line bg-sunken px-1.5 text-[12px] text-ink outline-none"
-            >
-              {LINE_HEIGHT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  줄간격 {option.label}
-                </option>
-              ))}
-            </select>
+            <LineHeightControl
+              value={activeNote?.lineHeight}
+              onChange={changeLineHeight}
+            />
 
             <select
               aria-label="배경"
@@ -506,6 +505,7 @@ export default function NotepadTool({ active = true }) {
             {canvas.shapePanelOpen && (
               <div
                 id="drawing-shape-popup"
+                data-shape-menu=""
                 className="absolute top-full left-3 z-50 mt-1 w-72 rounded-xl border border-line bg-widget p-3 shadow-modal"
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -620,6 +620,8 @@ export default function NotepadTool({ active = true }) {
                   suppressContentEditableWarning
                   className="relative z-10 min-h-full w-full text-ink outline-none"
                   onInput={scheduleSave}
+                  onBeforeInput={canvas.markTextHistory}
+                  onPaste={canvas.markTextHistory}
                   onMouseUp={rememberSelection}
                   onKeyUp={rememberSelection}
                   onFocus={rememberSelection}

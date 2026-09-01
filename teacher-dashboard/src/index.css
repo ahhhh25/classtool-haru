@@ -527,7 +527,8 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .timer-progress-track {
-  background: color-mix(in srgb, var(--accent) 16%, var(--sunken));
+  background: color-mix(in srgb, var(--accent) 28%, var(--sunken));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .timer-progress-fill {
@@ -582,6 +583,11 @@ input[type="number"]::-webkit-outer-spin-button {
 .kiosk-menu-chip.is-active {
   background: var(--kiosk-chip);
   color: var(--kiosk-chip-ink);
+}
+
+.kiosk-name-done {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  font-weight: 600;
 }
 
 @keyframes kiosk-name-pulse {

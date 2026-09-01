@@ -23,7 +23,8 @@ export function applyLineHeight(editor, value) {
   if (!editor) return
   const size = editorFontPx(editor)
   const multiplier = value === "normal" || !value ? 1 : Number(value)
-  const computed = Math.max(Math.round(size * (Number.isFinite(multiplier) ? multiplier : 1) * 1.6), Math.round(size * 1.25))
+  const factor = Number.isFinite(multiplier) ? multiplier : 1
+  const computed = Math.max(1, Math.round(size * factor * 1.6))
   editor.style.lineHeight = `${computed}px`
   if (editor.classList.contains("lined-note-bg")) {
     editor.style.backgroundSize = `100% ${computed}px`
@@ -38,13 +39,9 @@ export function syncEditorVerticalSpace(editor) {
   editor.style.paddingTop = `${topPad}px`
   editor.style.paddingBottom = `${bottomPad}px`
   const currentLh = parseInt(editor.style.lineHeight, 10) || Math.round(size * 1.6)
-  const minLh = Math.round(size * 1.25)
-  if (currentLh < minLh) {
-    editor.style.lineHeight = `${minLh}px`
-    if (editor.classList.contains("lined-note-bg")) {
-      editor.style.backgroundSize = `100% ${minLh}px`
-      editor.style.backgroundPositionY = `${Math.round(topPad * 0.5)}px`
-    }
+  if (editor.classList.contains("lined-note-bg")) {
+    editor.style.backgroundSize = `100% ${currentLh}px`
+    editor.style.backgroundPositionY = `${Math.round(topPad * 0.5)}px`
   }
 }
 
@@ -187,4 +184,28 @@ export function todayNoticeDateText() {
   const now = new Date()
   const days = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"]
   return `${now.getMonth() + 1}월 ${now.getDate()}일 ${days[now.getDay()]}`
+}
+
+export function kstDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date)
+}
+
+export function inferNoticeDate(raw) {
+  if (typeof raw?.noticeDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.noticeDate)) {
+    return raw.noticeDate
+  }
+  const titleMatch = String(raw?.title || "").match(/(\d{1,2})월\s*(\d{1,2})일/)
+  const fromUpdated = raw?.updatedAt ? kstDateKey(new Date(raw.updatedAt)) : null
+  if (titleMatch) {
+    const year = (fromUpdated || kstDateKey()).slice(0, 4)
+    const month = String(titleMatch[1]).padStart(2, "0")
+    const day = String(titleMatch[2]).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+  return fromUpdated
 }

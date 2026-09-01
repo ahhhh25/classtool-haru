@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Dashboard from "./components/Dashboard"
 import FocusMode from "./components/FocusMode"
 import SettingsPage from "./components/SettingsPage"
@@ -33,6 +33,8 @@ export default function App() {
   const [stackOrder, setStackOrder] = useState(saved.stackOrder)
   const [layoutPresets, setLayoutPresets] = useState(saved.layoutPresets ?? [])
   const [focusedWidgetId, setFocusedWidgetId] = useState(null)
+  const widgetsRef = useRef(widgets)
+  widgetsRef.current = widgets
 
   useEffect(() => {
     saveDashboard({ widgets, layout, stackOrder, layoutPresets })
@@ -62,6 +64,7 @@ export default function App() {
   }, [])
 
   const closeWidget = useCallback((id) => {
+    if (widgetsRef.current.find((widget) => widget.id === id)?.locked) return
     setFocusedWidgetId((focused) => (focused === id ? null : focused))
     setWidgets((current) => current.filter((widget) => widget.id !== id))
     setLayout((items) => items.filter((item) => item.i !== id))

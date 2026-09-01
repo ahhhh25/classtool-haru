@@ -122,7 +122,7 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
             setSelection(range)
           }}
           onChangeRuns={(nextRuns) => onChange({ runs: nextRuns })}
-          className="widget-scroll h-[8.5rem] overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-3 py-2.5 outline-none focus:border-line-strong"
+          className="widget-scroll h-[17rem] overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-3 py-2.5 outline-none focus:border-line-strong"
           style={{
             color: contentColor(draft.textColor, theme),
             caretColor: contentColor(draft.textColor, theme),
@@ -244,7 +244,7 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
             <p className="widget-empty text-[13px]">+로 알림을 추가하세요.</p>
           </div>
         )}
-        <ul ref={listRef}>
+        <ul ref={listRef} className="flex flex-col gap-3">
           {board.items.map((item, index) => {
             const dragging = dragId === item.id
             const showLine = dropSlot === index && dragId && dragId !== item.id
@@ -257,17 +257,17 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
                 onPointerMove={onItemPointerMove}
                 onPointerUp={onItemPointerUp}
                 onPointerCancel={onItemPointerUp}
-                className={`group no-drag relative mb-1 rounded-md ${
+                className={`group no-drag relative rounded-lg border border-line-strong ${
                   dragging ? "opacity-40" : ""
                 } ${dragId ? "cursor-grabbing select-none" : "cursor-grab"}`}
                 style={{
-                  backgroundColor: widgetBackground(item.bgColor, theme) || undefined,
+                  backgroundColor: widgetBackground(item.bgColor, theme) || "var(--sunken)",
                 }}
               >
                 {showLine && (
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-ink" />
                 )}
-                <div className="flex items-start gap-1 px-1 py-2">
+                <div className="flex items-start gap-1 px-2.5 py-3">
                   {text ? (
                     <RichRuns
                       runs={itemRuns(item)}
