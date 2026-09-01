@@ -10,6 +10,8 @@ import CheckboardWidget, { CheckboardSettings } from "./CheckboardWidget"
 import ClockWidget from "./ClockWidget"
 import DateClockSettings from "./DateClockSettings"
 import DateWidget from "./DateWidget"
+import DdaySettings from "./DdaySettings"
+import DdayWidget from "./DdayWidget"
 import NoticeWidget, { NoticeSettings } from "./NoticeWidget"
 import SettingsModal from "./SettingsModal"
 import WidgetSettings from "./WidgetSettings"
@@ -53,7 +55,7 @@ export default function WidgetCard({
   const { theme } = useTheme()
   const kioskLink = useKioskLink()
   const checkboardLinked = widget.type === "checkboard" && isKioskLinked(kioskLink)
-  const transparent = widget.type === "date" || widget.type === "clock"
+  const transparent = widget.type === "date" || widget.type === "clock" || widget.type === "dday"
   const customBg = widget.type === "announcement" ? null : widgetBackground(widget.bgColor, theme)
   const chromeInk = chromeInkOnBackground(customBg)
   const cardStyle = customBg
@@ -185,6 +187,8 @@ export default function WidgetCard({
             <DateWidget widget={widget} />
           ) : widget.type === "clock" ? (
             <ClockWidget widget={widget} />
+          ) : widget.type === "dday" ? (
+            <DdayWidget widget={widget} textScale={focused ? 2 : 1} />
           ) : widget.type === "announcement" ? (
             <AnnouncementWidget
               widget={widget}
@@ -225,7 +229,7 @@ export default function WidgetCard({
         <SettingsModal
           title={`${widget.title} 설정`}
           onClose={onToggleSettings}
-          fit={widget.type === "date" || widget.type === "clock"}
+          fit={widget.type === "date" || widget.type === "clock" || widget.type === "dday"}
           tall={checkboardLinked}
           headerExtra={
             widget.type === "notice" ? (
@@ -265,6 +269,12 @@ export default function WidgetCard({
             <CheckboardSettings widget={widget} onChange={onChangeSettings} />
           ) : widget.type === "date" || widget.type === "clock" ? (
             <DateClockSettings widget={widget} onChange={onChangeSettings} />
+          ) : widget.type === "dday" ? (
+            <DdaySettings
+              widget={widget}
+              onChange={onChangeSettings}
+              onClose={onToggleSettings}
+            />
           ) : (
             <WidgetSettings widget={widget} onChange={onChangeSettings} />
           )}

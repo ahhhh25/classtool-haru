@@ -3,6 +3,7 @@ import { DEFAULT_FONT } from "../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import { createAnnouncementState } from "./announcement"
 import { createCheckboardState } from "./checkboard"
+import { createDdayState } from "./dday"
 import { createNoticeState } from "./richText"
 
 export const WIDGET_PRESETS = {
@@ -46,6 +47,14 @@ export const WIDGET_PRESETS = {
     minW: 2,
     minH: 2,
   },
+  dday: {
+    title: "디데이",
+    fontSize: 36,
+    w: 4,
+    h: 5,
+    minW: 2,
+    minH: 3,
+  },
 }
 
 function chromeFromPreset(type, id) {
@@ -60,7 +69,7 @@ function chromeFromPreset(type, id) {
     fontFamily: DEFAULT_FONT.id,
     textColor: DEFAULT_TEXT_COLOR,
     bgColor: DEFAULT_BG_COLOR,
-    bold: false,
+    bold: type === "dday",
     underline: false,
     displayStyle: type === "date" || type === "clock" ? DEFAULT_DISPLAY_STYLE : undefined,
   }
@@ -72,6 +81,7 @@ export function createWidget(type) {
   if (type === "notice") widget.notice = createNoticeState()
   if (type === "announcement") widget.announcement = createAnnouncementState()
   if (type === "checkboard") widget.checkboard = createCheckboardState()
+  if (type === "dday") widget.dday = createDdayState()
   return widget
 }
 

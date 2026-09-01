@@ -3,6 +3,7 @@ import { DEFAULT_FONT } from "../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import { createAnnouncementItem, createAnnouncementState } from "./announcement"
 import { createCheckboardState } from "./checkboard"
+import { createDdayState } from "./dday"
 import { createNoticeState, plainToRuns } from "./richText"
 import { createWidget, serializeLayout, WIDGET_PRESETS } from "./widgets"
 
@@ -118,6 +119,9 @@ function hydrateWidget(raw) {
       ? raw.announcement.items.map(hydrateAnnouncementItem).filter(Boolean)
       : []
     widget.announcement = createAnnouncementState(items)
+  }
+  if (widget.type === "dday") {
+    widget.dday = createDdayState(raw.dday)
   }
   return widget
 }

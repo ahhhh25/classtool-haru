@@ -21,6 +21,7 @@ const ADD_WIDGETS = [
   { type: "checkboard", label: "+ 체크 위젯 추가" },
   { type: "date", label: "+ 날짜 위젯 추가" },
   { type: "clock", label: "+ 시간 위젯 추가" },
+  { type: "dday", label: "+ D-Day 위젯 추가" },
 ]
 
 const NAV_ITEMS = [
