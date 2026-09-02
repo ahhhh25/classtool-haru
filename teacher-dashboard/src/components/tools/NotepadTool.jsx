@@ -197,6 +197,7 @@ export default function NotepadTool({ active = true }) {
       )
       syncEditorVerticalSpace(editor)
       canvas.loadShapes(note.canvasData)
+      canvas.resizeCanvas()
       canvas.setTool("text")
     },
     [canvas, theme],
@@ -301,6 +302,7 @@ export default function NotepadTool({ active = true }) {
     const editor = editorRef.current
     const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
       lined: activeNote?.bgMode === "lined",
+      lineHeight: activeNote?.lineHeight,
     })
     persist(
       notesRef.current.map((note) =>
@@ -326,6 +328,7 @@ export default function NotepadTool({ active = true }) {
         note.id === activeId ? { ...note, lineHeight: value, updatedAt: new Date().toISOString() } : note,
       ),
     )
+    canvas.resizeCanvas()
     pushNotepadSync(true)
   }
 

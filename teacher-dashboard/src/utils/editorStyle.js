@@ -19,15 +19,35 @@ export function editorFontPx(editor) {
   return Number.isFinite(computed) ? computed : 36
 }
 
+/** Stored note.lineHeight is a unitless multiplier. `normal` / empty = 1. CSS line-height = multiplier × 1.6. */
+export function lineHeightMultiplier(value) {
+  if (value === "normal" || value == null || value === "") return 1
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 1
+}
+
+export function lineHeightCssRatio(value) {
+  return lineHeightMultiplier(value) * 1.6
+}
+
+function lineHeightPxFromStyle(editor, size) {
+  const raw = editor.style.lineHeight
+  if (!raw || raw === "normal") return Math.round(size * 1.6)
+  if (raw.endsWith("px")) {
+    const parsed = parseInt(raw, 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : Math.round(size * 1.6)
+  }
+  const ratio = parseFloat(raw)
+  return Math.max(1, Math.round(size * (Number.isFinite(ratio) ? ratio : 1.6)))
+}
+
 export function applyLineHeight(editor, value) {
   if (!editor) return
   const size = editorFontPx(editor)
-  const multiplier = value === "normal" || !value ? 1 : Number(value)
-  const factor = Number.isFinite(multiplier) ? multiplier : 1
-  const computed = Math.max(1, Math.round(size * factor * 1.6))
-  editor.style.lineHeight = `${computed}px`
+  const ratio = lineHeightCssRatio(value)
+  editor.style.lineHeight = String(ratio)
   if (editor.classList.contains("lined-note-bg")) {
-    editor.style.backgroundSize = `100% ${computed}px`
+    editor.style.backgroundSize = `100% ${Math.max(1, Math.round(size * ratio))}px`
   }
 }
 
@@ -38,7 +58,7 @@ export function syncEditorVerticalSpace(editor) {
   const bottomPad = Math.max(4, Math.round(size * 0.08))
   editor.style.paddingTop = `${topPad}px`
   editor.style.paddingBottom = `${bottomPad}px`
-  const currentLh = parseInt(editor.style.lineHeight, 10) || Math.round(size * 1.6)
+  const currentLh = lineHeightPxFromStyle(editor, size)
   if (editor.classList.contains("lined-note-bg")) {
     editor.style.backgroundSize = `100% ${currentLh}px`
     editor.style.backgroundPositionY = `${Math.round(topPad * 0.5)}px`
@@ -126,7 +146,7 @@ function applyStyleToSelection(range, applyStyle) {
   return wrapTextInRange(range, applyStyle)
 }
 
-export function applyEditorPatch(editor, patch, theme, savedRange, { lined = false } = {}) {
+export function applyEditorPatch(editor, patch, theme, savedRange, { lined = false, lineHeight } = {}) {
   if (!editor) return false
   const range = restoreRange(editor, savedRange)
   const hasSelection = Boolean(range)
@@ -135,11 +155,9 @@ export function applyEditorPatch(editor, patch, theme, savedRange, { lined = fal
     if (hasSelection) applyStyleToSelection(range, (span) => {
       span.style.fontSize = `${patch.fontSize}pt`
     })
-    else {
-      editor.style.fontSize = `${patch.fontSize}pt`
-      applyLineHeight(editor, "normal")
-      if (lined) syncEditorVerticalSpace(editor)
-    }
+    else editor.style.fontSize = `${patch.fontSize}pt`
+    applyLineHeight(editor, lineHeight ?? "normal")
+    if (lined) syncEditorVerticalSpace(editor)
   }
   if (patch.fontFamily) {
     const family = fontFamilyCss(resolveFontId(patch.fontFamily))

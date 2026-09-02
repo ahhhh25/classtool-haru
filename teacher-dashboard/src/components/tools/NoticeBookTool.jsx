@@ -269,7 +269,9 @@ export default function NoticeBookTool() {
 
   const patchStyle = (patch) => {
     const editor = editorRef.current
-    const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current)
+    const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
+      lineHeight: activeNotice?.lineHeight,
+    })
     persist(
       noticesRef.current.map((item) =>
         item.id === activeIdRef.current
