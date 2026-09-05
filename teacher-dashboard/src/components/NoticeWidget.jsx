@@ -296,61 +296,68 @@ export function NoticeSettings({ widget, onChange }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative z-20 shrink-0 overflow-visible border-b border-line bg-widget">
-        <WidgetSettings
-          widget={{
-            ...toolbarWidgetFromRuns(composeRuns, selection, toolbarFallback),
-            bgColor: widget.bgColor,
-          }}
-          onChange={(patch) => {
-            if (patch.bgColor != null) onChange({ bgColor: patch.bgColor })
-            const rest = { ...patch }
-            delete rest.bgColor
-            if (Object.keys(rest).length) applySettings(rest)
-          }}
-          compact
-          bare
-        />
-        {notice.mode === "auto" && (
-          <div className="flex flex-col gap-1 overflow-visible px-4 pb-2.5">
-            {draftSlots.map((slot, index) => (
-              <div key={slot.id} className="flex items-center gap-1">
-                <input
-                  type="time"
-                  aria-label={`시작 시간 ${index + 1}`}
-                  value={slot.start}
-                  onChange={(event) => updateSlot(slot.id, { start: event.target.value })}
-                  className="h-7 w-[138px] rounded-md border border-line bg-sunken px-1.5 text-[12px] text-ink outline-none focus:border-line-strong"
-                />
-                <span className="text-[12px] text-muted">~</span>
-                <input
-                  type="time"
-                  aria-label={`끝 시간 ${index + 1}`}
-                  value={slot.end}
-                  onChange={(event) => updateSlot(slot.id, { end: event.target.value })}
-                  className="h-7 w-[138px] rounded-md border border-line bg-sunken px-1.5 text-[12px] text-ink outline-none focus:border-line-strong"
-                />
-                {index === 0 ? (
-                  <button
-                    type="button"
-                    onClick={addSlot}
-                    className="h-7 shrink-0 rounded-md border border-line px-2 text-[12px] whitespace-nowrap text-icon transition-colors hover:bg-hover hover:text-ink"
-                  >
-                    시간대 추가
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    aria-label="시간대 삭제"
-                    onClick={() => removeSlot(slot.id)}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-icon hover:bg-hover hover:text-ink"
-                  >
-                    <X size={14} strokeWidth={1.5} />
-                  </button>
-                )}
-              </div>
-            ))}
+        <div className="flex items-stretch">
+          <div className="min-w-0 flex-1">
+            <WidgetSettings
+              widget={{
+                ...toolbarWidgetFromRuns(composeRuns, selection, toolbarFallback),
+                bgColor: widget.bgColor,
+              }}
+              onChange={(patch) => {
+                if (patch.bgColor != null) onChange({ bgColor: patch.bgColor })
+                const rest = { ...patch }
+                delete rest.bgColor
+                if (Object.keys(rest).length) applySettings(rest)
+              }}
+              compact
+              bare
+            />
           </div>
-        )}
+          {notice.mode === "auto" && (
+            <>
+              <div className="my-2.5 w-px shrink-0 bg-line" aria-hidden="true" />
+              <div className="flex shrink-0 flex-col justify-center gap-1 overflow-visible px-4 py-2.5">
+                {draftSlots.map((slot, index) => (
+                  <div key={slot.id} className="flex items-center gap-1">
+                    <input
+                      type="time"
+                      aria-label={`시작 시간 ${index + 1}`}
+                      value={slot.start}
+                      onChange={(event) => updateSlot(slot.id, { start: event.target.value })}
+                      className="h-7 w-[138px] rounded-md border border-line bg-sunken px-1.5 text-[12px] text-ink outline-none focus:border-line-strong"
+                    />
+                    <span className="text-[12px] text-muted">~</span>
+                    <input
+                      type="time"
+                      aria-label={`끝 시간 ${index + 1}`}
+                      value={slot.end}
+                      onChange={(event) => updateSlot(slot.id, { end: event.target.value })}
+                      className="h-7 w-[138px] rounded-md border border-line bg-sunken px-1.5 text-[12px] text-ink outline-none focus:border-line-strong"
+                    />
+                    {index === 0 ? (
+                      <button
+                        type="button"
+                        onClick={addSlot}
+                        className="h-7 shrink-0 rounded-md border border-line px-2 text-[12px] whitespace-nowrap text-icon transition-colors hover:bg-hover hover:text-ink"
+                      >
+                        시간대 추가
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label="시간대 삭제"
+                        onClick={() => removeSlot(slot.id)}
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md text-icon hover:bg-hover hover:text-ink"
+                      >
+                        <X size={14} strokeWidth={1.5} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
