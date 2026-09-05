@@ -1,3 +1,5 @@
+import { DEFAULT_COMPOSE_FONT_SIZE, getComposeFontSize } from "./composeFontSize"
+
 export function createNoticeState() {
   return {
     mode: "auto",
@@ -12,7 +14,7 @@ export function createRun(text, style = {}) {
   return {
     text,
     fontFamily: style.fontFamily ?? "Paperlogy",
-    fontSize: style.fontSize ?? 22,
+    fontSize: style.fontSize ?? getComposeFontSize() ?? DEFAULT_COMPOSE_FONT_SIZE,
     color: style.color ?? "#FFFFFF",
     bold: Boolean(style.bold),
     underline: Boolean(style.underline),

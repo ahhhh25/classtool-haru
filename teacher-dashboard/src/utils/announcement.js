@@ -1,10 +1,11 @@
 import { DEFAULT_FONT } from "../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
+import { DEFAULT_COMPOSE_FONT_SIZE, getComposeFontSize } from "./composeFontSize"
 import { plainToRuns } from "./richText"
 
 export function createAnnouncementItem(style = {}) {
   const fontFamily = style.fontFamily ?? DEFAULT_FONT.id
-  const fontSize = style.fontSize ?? 18
+  const fontSize = style.fontSize ?? getComposeFontSize() ?? DEFAULT_COMPOSE_FONT_SIZE
   const textColor = style.textColor ?? DEFAULT_TEXT_COLOR
   const bgColor = style.bgColor ?? DEFAULT_BG_COLOR
   const bold = Boolean(style.bold)

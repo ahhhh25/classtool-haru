@@ -1,3 +1,5 @@
+import { parseHexColor } from "../utils/hexColor"
+
 /** Saturated Pantone-inspired text colors. `hex` is dark mode; `lightHex` is light mode. */
 export const TEXT_PALETTE = [
   { id: "bright-white", hex: "#FFFFFF", lightHex: "#1C1917" },
@@ -35,8 +37,8 @@ export function bgSwatchFill(swatch, theme) {
 export function widgetBackground(bgColor, theme) {
   if (!bgColor || bgColor === DEFAULT_BG_COLOR) return null
   const swatch = BG_PALETTE.find((item) => item.id === bgColor)
-  if (!swatch?.hex) return null
-  return bgSwatchFill(swatch, theme)
+  if (swatch) return swatch.hex ? bgSwatchFill(swatch, theme) : null
+  return parseHexColor(bgColor)
 }
 
 function hexLuminance(hex) {

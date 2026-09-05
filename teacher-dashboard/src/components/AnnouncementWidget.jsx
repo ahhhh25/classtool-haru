@@ -4,6 +4,7 @@ import { widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import { createAnnouncementItem, reorderAnnouncements } from "../utils/announcement"
+import { getComposeFontSize, setComposeFontSize } from "../utils/composeFontSize"
 import {
   applyStyleToRange,
   plainToRuns,
@@ -61,7 +62,7 @@ function slotFromPointer(list, clientY) {
 function draftFromWidget(widget) {
   return createAnnouncementItem({
     fontFamily: widget.fontFamily,
-    fontSize: widget.fontSize,
+    fontSize: getComposeFontSize(),
     textColor: widget.textColor,
     bgColor: widget.bgColor,
     bold: widget.bold,
@@ -91,6 +92,7 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
   const runs = itemRuns(draft)
 
   const applyStyle = (patch) => {
+    if (patch.fontSize != null) setComposeFontSize(patch.fontSize)
     const flushed = editorFlushRef.current?.()
     const currentRuns = flushed ?? itemRuns(draftRef.current)
     const runPatch = widgetPatchToRunPatch(patch)
@@ -126,6 +128,7 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
           style={{
             color: contentColor(draft.textColor, theme),
             caretColor: contentColor(draft.textColor, theme),
+            fontSize: `${Number(draft.fontSize)}pt`,
             backgroundColor: widgetBackground(draft.bgColor, theme) || "var(--sunken)",
           }}
         />
@@ -211,7 +214,6 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
 
   const rememberStyle = (item) => ({
     fontFamily: item.fontFamily,
-    fontSize: item.fontSize,
     textColor: item.textColor,
     bold: item.bold,
     underline: item.underline,

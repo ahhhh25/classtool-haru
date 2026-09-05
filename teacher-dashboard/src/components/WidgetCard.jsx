@@ -230,7 +230,8 @@ export default function WidgetCard({
           title={`${widget.title} 설정`}
           onClose={onToggleSettings}
           fit={widget.type === "date" || widget.type === "clock" || widget.type === "dday"}
-          tall={checkboardLinked}
+          tall={checkboardLinked || widget.type === "notice"}
+          overflowVisible={widget.type === "notice"}
           headerExtra={
             widget.type === "notice" ? (
               <div className="flex min-w-0 items-center gap-2">

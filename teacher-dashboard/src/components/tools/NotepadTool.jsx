@@ -20,7 +20,8 @@ import { DEFAULT_FONT } from "../../constants/fonts"
 import { DEFAULT_TEXT_COLOR } from "../../constants/palette"
 import { useNotepadCanvas } from "../../hooks/useNotepadCanvas"
 import { useTheme } from "../../theme/ThemeProvider"
-import { DRAW_COLORS, SHAPE_TYPES } from "../../utils/notepadDrawing"
+import { SHAPE_TYPES } from "../../utils/notepadDrawing"
+import ColorSwatches from "../ColorSwatches"
 import LineHeightControl from "../LineHeightControl"
 import {
   applyBaseEditorStyle,
@@ -598,18 +599,12 @@ export default function NotepadTool({ active = true }) {
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 <p className="mb-1.5 text-[11px] tracking-wide text-muted uppercase">판서 색상</p>
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {DRAW_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => canvas.setShapeProp("color", color)}
-                      className={`size-6 rounded-full border ${
-                        canvas.shapeConfig.color === color ? "border-ink" : "border-line"
-                      }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
+                <div className="mb-3">
+                  <ColorSwatches
+                    kind="draw"
+                    value={canvas.shapeConfig.color}
+                    onChange={(color) => canvas.setShapeProp("color", color)}
+                  />
                 </div>
                 <div className="mb-3 grid grid-cols-2 gap-2">
                   <label className="text-[11px] text-muted">

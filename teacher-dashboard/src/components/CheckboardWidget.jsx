@@ -1,7 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Check, Eye, EyeOff, Square, Trash2 } from "lucide-react"
 import { fontFamilyCss } from "../constants/fonts"
-import { TEXT_PALETTE, DEFAULT_TEXT_COLOR, swatchFill } from "../constants/palette"
+import { DEFAULT_TEXT_COLOR } from "../constants/palette"
+import ColorSwatches from "./ColorSwatches"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import SettingsModal from "./SettingsModal"
@@ -200,25 +201,7 @@ function AddItemModal({ widget, onChange, onClose }) {
   return (
     <SettingsModal title="체크 항목 추가" onClose={onClose}>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <div className="flex items-center gap-1.5">
-          {TEXT_PALETTE.map((swatch) => {
-            const selected = itemColor === swatch.hex
-            return (
-              <button
-                key={swatch.id}
-                type="button"
-                aria-label={swatchFill(swatch, theme)}
-                aria-pressed={selected}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setItemColor(swatch.hex)}
-                className={`size-3.5 shrink-0 rounded-full border transition-transform ${
-                  selected ? "scale-110 border-ink" : "border-line hover:border-line-strong"
-                }`}
-                style={{ backgroundColor: swatchFill(swatch, theme) }}
-              />
-            )
-          })}
-        </div>
+        <ColorSwatches kind="text" compact value={itemColor} onChange={setItemColor} />
         <input
           value={itemName}
           onChange={(event) => setItemName(event.target.value)}
