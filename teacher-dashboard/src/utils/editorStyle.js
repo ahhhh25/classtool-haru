@@ -175,11 +175,15 @@ export function applyEditorPatch(editor, patch, theme, savedRange, { lined = fal
   }
   if (patch.bold != null) {
     if (hasSelection) document.execCommand("bold")
-    else editor.style.fontWeight = patch.bold ? "700" : "400"
+    else if (Boolean(document.queryCommandState("bold")) !== Boolean(patch.bold)) {
+      document.execCommand("bold")
+    }
   }
   if (patch.underline != null) {
     if (hasSelection) document.execCommand("underline")
-    else editor.style.textDecoration = patch.underline ? "underline" : "none"
+    else if (Boolean(document.queryCommandState("underline")) !== Boolean(patch.underline)) {
+      document.execCommand("underline")
+    }
   }
 
   return hasSelection
@@ -211,6 +215,15 @@ export function kstDateKey(date = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).format(date)
+}
+
+export function isNoticeDatePast(noticeDate, today = kstDateKey()) {
+  const key =
+    typeof noticeDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(noticeDate.trim())
+      ? noticeDate.trim()
+      : ""
+  if (!key) return false
+  return key < today
 }
 
 export function inferNoticeDate(raw) {

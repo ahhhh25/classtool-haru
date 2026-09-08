@@ -10,6 +10,7 @@ import {
   applyEditorPatch,
   applyLineHeight,
   inferNoticeDate,
+  isNoticeDatePast,
   kstDateKey,
   parseStoredSize,
   resolveFontId,
@@ -41,7 +42,7 @@ function emptyNotice() {
     fontSize: 36,
     lineHeight: "normal",
     textColor: DEFAULT_TEXT_COLOR,
-    bold: true,
+    bold: false,
     underline: false,
     noticeDate: kstDateKey(),
     kept: false,
@@ -62,7 +63,7 @@ function hydrateNotice(raw) {
     underline: Boolean(raw.underline),
     lineHeight: raw.lineHeight || "normal",
     noticeDate: inferNoticeDate(raw),
-    kept: raw.kept == null ? true : Boolean(raw.kept),
+    kept: Boolean(raw.kept),
   }
 }
 
@@ -84,6 +85,9 @@ export default function NoticeBookTool() {
   const [copyLabel, setCopyLabel] = useState("복사")
   const [saveLabel, setSaveLabel] = useState("저장")
   const [autoDelete, setAutoDelete] = useState(() => Boolean(loadJson(AUTO_DELETE_KEY, false)))
+  const [oneShotMarks, setOneShotMarks] = useState({ bold: false, underline: false })
+  const oneShotRef = useRef(oneShotMarks)
+  oneShotRef.current = oneShotMarks
   const [publishOpen, setPublishOpen] = useState(false)
   const [publishUrl, setPublishUrl] = useState(() => loadJson(PUBLISH_URL_KEY, "") || "")
   const editorRef = useRef(null)
@@ -136,23 +140,24 @@ export default function NoticeBookTool() {
 
   const pruneExpired = useCallback(() => {
     if (!loadJson(AUTO_DELETE_KEY, false)) return
-    const today = kstDateKey()
     const current = noticesRef.current
-    const kept = current.filter((item) => item.kept || !item.noticeDate || item.noticeDate >= today)
-    if (kept.length === current.length) return
-    if (kept.length === 0) {
+    const remaining = current.filter((item) => item.kept || !isNoticeDatePast(item.noticeDate))
+    if (remaining.length === current.length) return
+    if (remaining.length === 0) {
       const created = emptyNotice()
       persist([created])
       setActiveId(created.id)
       flushNoticeWith(created.id)
       return
     }
-    persist(kept)
-    if (!kept.some((item) => item.id === activeIdRef.current)) {
-      setActiveId(kept[0].id)
+    persist(remaining)
+    if (!remaining.some((item) => item.id === activeIdRef.current)) {
+      setActiveId(remaining[0].id)
     }
     flushNoticeWith(
-      kept.some((item) => item.id === activeIdRef.current) ? activeIdRef.current : kept[0].id,
+      remaining.some((item) => item.id === activeIdRef.current)
+        ? activeIdRef.current
+        : remaining[0].id,
     )
   }, [persist])
 
@@ -258,6 +263,14 @@ export default function NoticeBookTool() {
     pushNoticeSync(true)
   }
 
+  const consumeOneShot = () => {
+    const marks = oneShotRef.current
+    if (!marks.bold && !marks.underline) return
+    if (marks.bold && document.queryCommandState("bold")) document.execCommand("bold")
+    if (marks.underline && document.queryCommandState("underline")) document.execCommand("underline")
+    setOneShotMarks({ bold: false, underline: false })
+  }
+
   const rememberSelection = () => {
     const sel = window.getSelection()
     if (!sel?.rangeCount) return
@@ -272,12 +285,24 @@ export default function NoticeBookTool() {
     const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
       lineHeight: activeNotice?.lineHeight,
     })
+    const persistPatch = { ...patch }
+    if (patch.bold != null || patch.underline != null) {
+      if (appliedToSelection) setOneShotMarks({ bold: false, underline: false })
+      else {
+        setOneShotMarks((current) => ({
+          bold: patch.bold ?? current.bold,
+          underline: patch.underline ?? current.underline,
+        }))
+      }
+      delete persistPatch.bold
+      delete persistPatch.underline
+    }
     persist(
       noticesRef.current.map((item) =>
         item.id === activeIdRef.current
           ? {
               ...item,
-              ...(appliedToSelection ? {} : patch),
+              ...(appliedToSelection ? {} : persistPatch),
               content: editor?.innerHTML ?? item.content,
               updatedAt: new Date().toISOString(),
             }
@@ -322,11 +347,6 @@ export default function NoticeBookTool() {
 
   const saveNotice = () => {
     saveFromEditor()
-    persist(
-      noticesRef.current.map((item) =>
-        item.id === activeIdRef.current ? { ...item, kept: true } : item,
-      ),
-    )
     setListOpen(true)
     setSaveLabel("저장됨")
     window.setTimeout(() => setSaveLabel("저장"), 1500)
@@ -451,8 +471,8 @@ export default function NoticeBookTool() {
               widget={{
                 fontFamily: activeNotice?.fontFamily ?? DEFAULT_FONT.id,
                 fontSize: activeNotice?.fontSize ?? 36,
-                bold: Boolean(activeNotice?.bold),
-                underline: Boolean(activeNotice?.underline),
+                bold: oneShotMarks.bold,
+                underline: oneShotMarks.underline,
                 textColor: activeNotice?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -544,8 +564,14 @@ export default function NoticeBookTool() {
               contentEditable
               suppressContentEditableWarning
               className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-sunken p-6 text-ink outline-none"
-              onInput={scheduleSave}
-              onBlur={flushEditorAndSync}
+              onInput={() => {
+                consumeOneShot()
+                scheduleSave()
+              }}
+              onBlur={() => {
+                consumeOneShot()
+                flushEditorAndSync()
+              }}
               onMouseUp={rememberSelection}
               onKeyUp={rememberSelection}
               onFocus={rememberSelection}

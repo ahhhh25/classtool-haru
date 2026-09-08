@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import {
+  Armchair,
   CalendarDays,
   Dices,
   LayoutDashboard,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { id: VIEWS.noticebook, label: "알림장", icon: CalendarDays },
   { id: VIEWS.timer, label: "타이머", icon: Timer },
   { id: VIEWS.picker, label: "랜덤뽑기 +", icon: Dices },
+  { id: VIEWS.seating, label: "자리 바꾸기", icon: Armchair },
   { id: VIEWS.settings, label: "설정", icon: Settings },
 ]
 

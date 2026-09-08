@@ -50,22 +50,33 @@ export default function RichTextEditor({
   ariaLabel,
   onKeyDown,
   flushRef,
+  insertStyle,
+  onInsertStyleConsumed,
 }) {
   const editorRef = useRef(null)
   const skipPaint = useRef(false)
   const runsRef = useRef(runs)
   const selectionRef = useRef(null)
   const fallbackRef = useRef(fallbackStyle)
+  const insertStyleRef = useRef(insertStyle)
   const onSelectionChangeRef = useRef(onSelectionChange)
+  const onInsertStyleConsumedRef = useRef(onInsertStyleConsumed)
   runsRef.current = runs
   fallbackRef.current = fallbackStyle
+  insertStyleRef.current = insertStyle
   onSelectionChangeRef.current = onSelectionChange
+  onInsertStyleConsumedRef.current = onInsertStyleConsumed
 
   if (flushRef) {
     flushRef.current = () => {
       const el = editorRef.current
       if (!el) return runsRef.current
-      return syncRunsWithPlain(runsRef.current, readEditorPlain(el), fallbackRef.current)
+      return syncRunsWithPlain(
+        runsRef.current,
+        readEditorPlain(el),
+        fallbackRef.current,
+        insertStyleRef.current,
+      )
     }
   }
 
@@ -127,7 +138,21 @@ export default function RichTextEditor({
       onInput={() => {
         skipPaint.current = true
         const plain = readEditorPlain(editorRef.current)
-        onChangeRuns(syncRunsWithPlain(runsRef.current, plain, fallbackStyle))
+        onChangeRuns(
+          syncRunsWithPlain(
+            runsRef.current,
+            plain,
+            fallbackStyle,
+            insertStyleRef.current,
+          ),
+        )
+        if (
+          insertStyleRef.current &&
+          (insertStyleRef.current.bold !== undefined ||
+            insertStyleRef.current.underline !== undefined)
+        ) {
+          onInsertStyleConsumedRef.current?.()
+        }
       }}
       className={className}
       style={style}

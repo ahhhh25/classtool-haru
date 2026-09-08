@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react"
 import { fontFamilyCss } from "../constants/fonts"
-import { widgetBackground } from "../constants/palette"
+import { widgetBackground, DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import WidgetSettings from "./WidgetSettings"
@@ -10,12 +10,15 @@ import { getComposeFontSize, setComposeFontSize } from "../utils/composeFontSize
 import {
   applyStyleToRange,
   createDraftSlot,
+  DEFAULT_WEEKDAYS,
   getOffsetsFromSelection,
   findActiveSchedule,
   formatSlotsLabel,
   getScheduleSlots,
+  normalizeWeekdays,
   runsToPlain,
   toolbarWidgetFromRuns,
+  WEEKDAY_OPTIONS,
   widgetPatchToRunPatch,
 } from "../utils/richText"
 
@@ -68,7 +71,9 @@ export function NoticeSettings({ widget, onChange }) {
   const [selection, setSelection] = useState(null)
   const [now, setNow] = useState(() => new Date())
   const [draftSlots, setDraftSlots] = useState(() => [createDraftSlot()])
+  const [draftWeekdays, setDraftWeekdays] = useState(() => [...DEFAULT_WEEKDAYS])
   const [draftRuns, setDraftRuns] = useState([])
+  const [oneShotMarks, setOneShotMarks] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [formEditId, setFormEditId] = useState(null)
   const [savedEditId, setSavedEditId] = useState(null)
@@ -99,12 +104,17 @@ export function NoticeSettings({ widget, onChange }) {
     notice.schedules.find((schedule) => schedule.id === editingId) ?? activeSchedule
 
   const composeRuns = notice.mode === "manual" ? manualDraftRuns : draftRuns
-  const toolbarFallback = {
+  const runToolbar = toolbarWidgetFromRuns(composeRuns, selection, {
     fontSize: getComposeFontSize(),
     fontFamily: widget.fontFamily,
     textColor: widget.textColor,
-    bold: widget.bold,
-    underline: widget.underline,
+    bold: false,
+    underline: false,
+  })
+  const toolbarFallback = {
+    ...runToolbar,
+    bold: selection ? runToolbar.bold : Boolean(oneShotMarks?.bold),
+    underline: selection ? runToolbar.underline : Boolean(oneShotMarks?.underline),
   }
 
   const updateNotice = (patch, extra = {}) => {
@@ -118,28 +128,45 @@ export function NoticeSettings({ widget, onChange }) {
 
   const applySettings = (patch) => {
     if (patch.fontSize != null) setComposeFontSize(patch.fontSize)
-    onChange(patch)
+    const oneShot = patch.bold != null || patch.underline != null
+    const sticky = { ...patch }
+    delete sticky.bold
+    delete sticky.underline
+    if (Object.keys(sticky).length) onChange(sticky)
+
     const runPatch = widgetPatchToRunPatch(patch)
-    if (!Object.keys(runPatch).length) return
     const flushed = editorFlushRef.current?.()
     const currentRuns = flushed ?? (notice.mode === "manual" ? manualDraftRuns : draftRuns)
     const range = selectionRef.current
-    const styled = range
-      ? applyStyleToRange(currentRuns, range.start, range.end, runPatch)
-      : applyStyleToRange(currentRuns, 0, runsToPlain(currentRuns).length, runPatch)
 
-    if (notice.mode === "manual") {
-      setManualDraftRuns(styled)
+    if (range && Object.keys(runPatch).length) {
+      const styled = applyStyleToRange(currentRuns, range.start, range.end, runPatch)
+      if (notice.mode === "manual") setManualDraftRuns(styled)
+      else setDraftRuns(styled)
+      if (oneShot) setOneShotMarks({ bold: false, underline: false })
       return
     }
 
-    setDraftRuns(styled)
+    if (oneShot) {
+      setOneShotMarks((current) => ({
+        bold: patch.bold ?? current?.bold ?? false,
+        underline: patch.underline ?? current?.underline ?? false,
+      }))
+    }
+
+    const stickyRun = widgetPatchToRunPatch(sticky)
+    if (!Object.keys(stickyRun).length) return
+    const styled = applyStyleToRange(currentRuns, 0, runsToPlain(currentRuns).length, stickyRun)
+    if (notice.mode === "manual") setManualDraftRuns(styled)
+    else setDraftRuns(styled)
   }
 
   const resetForm = () => {
     setFormEditId(null)
     setDraftSlots([createDraftSlot()])
+    setDraftWeekdays([...DEFAULT_WEEKDAYS])
     setDraftRuns([])
+    setOneShotMarks(null)
     selectionRef.current = null
     setSelection(null)
   }
@@ -159,13 +186,26 @@ export function NoticeSettings({ widget, onChange }) {
     setDraftSlots((current) => (current.length <= 1 ? current : current.filter((slot) => slot.id !== id)))
   }
 
+  const toggleWeekday = (day) => {
+    setDraftWeekdays((current) => {
+      const next = current.includes(day)
+        ? current.filter((item) => item !== day)
+        : [...current, day]
+      return next.length ? next : current
+    })
+  }
+
   const startEditSchedule = (schedule) => {
     setFormEditId(schedule.id)
     setEditingId(schedule.id)
     setDraftSlots(
       getScheduleSlots(schedule).map((slot) => createDraftSlot(slot.start, slot.end)),
     )
+    setDraftWeekdays(normalizeWeekdays(schedule.weekdays))
     setDraftRuns((schedule.runs ?? []).map((run) => ({ ...run })))
+    setOneShotMarks(null)
+    if (schedule.bgColor) onChange({ bgColor: schedule.bgColor })
+    if (schedule.textColor) onChange({ textColor: schedule.textColor })
     selectionRef.current = null
     setSelection(null)
   }
@@ -173,13 +213,18 @@ export function NoticeSettings({ widget, onChange }) {
   const saveSchedule = () => {
     const text = runsToPlain(draftRuns).replace(/\s+$/g, "").replace(/^\s+/, "")
     const slots = draftSlots.filter((slot) => slot.start && slot.end)
+    const weekdays = draftWeekdays.length ? [...draftWeekdays] : [...DEFAULT_WEEKDAYS]
     if (!text || slots.length === 0) return
     const runs = draftRuns.map((run) => ({ ...run }))
+    const style = {
+      bgColor: widget.bgColor || DEFAULT_BG_COLOR,
+      textColor: widget.textColor || DEFAULT_TEXT_COLOR,
+    }
 
     if (formEditId) {
       updateNotice({
         schedules: notice.schedules.map((schedule) =>
-          schedule.id !== formEditId ? schedule : { ...schedule, slots, runs },
+          schedule.id !== formEditId ? schedule : { ...schedule, slots, weekdays, runs, ...style },
         ),
       })
       resetForm()
@@ -193,13 +238,17 @@ export function NoticeSettings({ widget, onChange }) {
         {
           id,
           slots,
+          weekdays,
           runs,
+          ...style,
         },
       ],
     })
     setEditingId(id)
     setDraftRuns([])
     setDraftSlots([createDraftSlot()])
+    setDraftWeekdays([...DEFAULT_WEEKDAYS])
+    setOneShotMarks(null)
     selectionRef.current = null
     setSelection(null)
   }
@@ -300,7 +349,7 @@ export function NoticeSettings({ widget, onChange }) {
           <div className="min-w-0 flex-1">
             <WidgetSettings
               widget={{
-                ...toolbarWidgetFromRuns(composeRuns, selection, toolbarFallback),
+                ...toolbarFallback,
                 bgColor: widget.bgColor,
               }}
               onChange={(patch) => {
@@ -316,7 +365,28 @@ export function NoticeSettings({ widget, onChange }) {
           {notice.mode === "auto" && (
             <>
               <div className="my-2.5 w-px shrink-0 bg-line" aria-hidden="true" />
-              <div className="flex shrink-0 flex-col justify-center gap-1 overflow-visible px-4 py-2.5">
+              <div className="flex shrink-0 flex-col justify-center gap-1.5 overflow-visible px-4 py-2.5">
+                <div className="flex items-center gap-0.5">
+                  {WEEKDAY_OPTIONS.map((day) => {
+                    const selected = draftWeekdays.includes(day.id)
+                    return (
+                      <button
+                        key={day.id}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`${day.label}요일`}
+                        onClick={() => toggleWeekday(day.id)}
+                        className={`flex size-7 items-center justify-center rounded-md border text-[12px] transition-colors ${
+                          selected
+                            ? "border-line-strong bg-active text-ink"
+                            : "border-line text-muted hover:bg-hover hover:text-ink"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    )
+                  })}
+                </div>
                 {draftSlots.map((slot, index) => (
                   <div key={slot.id} className="flex items-center gap-1">
                     <input
@@ -367,10 +437,10 @@ export function NoticeSettings({ widget, onChange }) {
               runs={draftRuns}
               fallbackStyle={{
                 fontFamily: widget.fontFamily,
-                fontSize: widget.fontSize,
+                fontSize: getComposeFontSize(),
                 color: widget.textColor,
-                bold: widget.bold,
-                underline: widget.underline,
+                bold: Boolean(oneShotMarks?.bold),
+                underline: Boolean(oneShotMarks?.underline),
               }}
               theme={theme}
               ariaLabel="공지 내용"
@@ -379,6 +449,8 @@ export function NoticeSettings({ widget, onChange }) {
               onSelectionChange={rememberSelection}
               onChangeRuns={setDraftRuns}
               flushRef={editorFlushRef}
+              insertStyle={oneShotMarks}
+              onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false })}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault()
@@ -430,10 +502,7 @@ export function NoticeSettings({ widget, onChange }) {
                     >
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditingId(schedule.id)
-                          selectionRef.current = null
-                        }}
+                        onClick={() => startEditSchedule(schedule)}
                         className="flex min-w-0 flex-1 items-start gap-2"
                       >
                         <span className="shrink-0 text-[12px] text-muted">
@@ -471,10 +540,10 @@ export function NoticeSettings({ widget, onChange }) {
               runs={manualDraftRuns}
               fallbackStyle={{
                 fontFamily: widget.fontFamily,
-                fontSize: widget.fontSize,
+                fontSize: getComposeFontSize(),
                 color: widget.textColor,
-                bold: widget.bold,
-                underline: widget.underline,
+                bold: Boolean(oneShotMarks?.bold),
+                underline: Boolean(oneShotMarks?.underline),
               }}
               theme={theme}
               ariaLabel="공지 내용"
@@ -483,6 +552,8 @@ export function NoticeSettings({ widget, onChange }) {
               onSelectionChange={rememberSelection}
               onChangeRuns={setManualDraftRuns}
               flushRef={editorFlushRef}
+              insertStyle={oneShotMarks}
+              onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false })}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault()
@@ -593,9 +664,16 @@ export default function NoticeWidget({ widget, textScale = 1 }) {
 
   const liveRuns = notice.mode === "manual" ? notice.manualRuns : (activeSchedule?.runs ?? [])
   const hasLive = runsToPlain(liveRuns).length > 0
+  const liveBg =
+    notice.mode === "auto" && activeSchedule?.bgColor
+      ? widgetBackground(activeSchedule.bgColor, theme)
+      : null
 
   return (
-    <div className="widget-scroll relative flex h-full items-center justify-center overflow-y-auto px-5">
+    <div
+      className="widget-scroll relative flex h-full items-center justify-center overflow-y-auto px-5"
+      style={liveBg ? { backgroundColor: liveBg } : undefined}
+    >
       {hasLive ? (
         <RichNoticeText
           runs={liveRuns}

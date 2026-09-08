@@ -10,6 +10,8 @@ export const APP_TOOL_KEYS = {
   students: "edu_students_v1",
   publishUrl: "edu_notice_publish_url",
   pickerPrefs: "edu_picker_prefs_v1",
+  seating: "haru-seating-v1",
+  seatingHistory: "haru-seating-history-v1",
 }
 
 function readStoredJson(key) {
@@ -35,7 +37,7 @@ export function downloadAppBackup(state, theme) {
   )
   const payload = {
     kind: APP_BACKUP_KIND,
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     theme,
     dashboard: packDashboard(state),

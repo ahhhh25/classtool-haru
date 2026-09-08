@@ -632,3 +632,143 @@ input[type="number"]::-webkit-outer-spin-button {
     opacity: 0;
   }
 }
+
+.seating-board-wrap {
+  padding-inline: 2%;
+}
+
+.seating-board {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 3.4rem;
+  border: 7px solid #8a6230;
+  border-radius: 3px;
+  background:
+    radial-gradient(ellipse at 50% 8%, rgba(255, 255, 255, 0.1), transparent 52%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 11px,
+      rgba(255, 255, 255, 0.025) 11px,
+      rgba(255, 255, 255, 0.025) 12px
+    ),
+    #1b4a3a;
+  color: #f4f7f2;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.62em;
+  text-indent: 0.62em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 14px 22px rgba(0, 0, 0, 0.28),
+    inset 0 -10px 16px rgba(0, 0, 0, 0.18),
+    0 5px 0 #5d401c,
+    0 10px 18px rgba(0, 0, 0, 0.28);
+}
+
+.seating-board.is-large {
+  height: 4.25rem;
+  font-size: 20px;
+  border-width: 8px;
+}
+
+html.light .seating-board {
+  background:
+    radial-gradient(ellipse at 50% 8%, rgba(255, 255, 255, 0.12), transparent 52%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 11px,
+      rgba(255, 255, 255, 0.03) 11px,
+      rgba(255, 255, 255, 0.03) 12px
+    ),
+    #215744;
+  border-color: #9a7038;
+}
+
+.seating-stage {
+  perspective: 900px;
+}
+
+.seating-desk {
+  background: var(--sunken);
+  border-color: var(--line);
+  color: var(--ink);
+  transform-style: preserve-3d;
+}
+
+.seating-desk.is-filled {
+  background: var(--widget-header);
+  border-color: var(--line-strong);
+}
+
+.seating-desk.is-fixed {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.seating-desk.is-disabled {
+  background: color-mix(in srgb, var(--sunken) 80%, var(--faint));
+  color: var(--faint);
+}
+
+.seating-desk.is-shuffling {
+  animation: seating-chip-shuffle 0.18s ease-in-out infinite;
+}
+
+.seating-desk.is-revealing {
+  animation: seating-reveal 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.seating-slot-name {
+  animation: seating-slot 0.08s linear infinite;
+}
+
+@keyframes seating-chip-shuffle {
+  0%,
+  100% {
+    transform: translateY(0) rotateZ(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-8px) rotateZ(-9deg) scale(1.05);
+  }
+  50% {
+    transform: translateY(3px) rotateY(18deg) rotateZ(7deg) scale(0.96);
+  }
+  75% {
+    transform: translateY(-4px) rotateZ(-4deg) scale(1.02);
+  }
+}
+
+@keyframes seating-slot {
+  0%,
+  100% {
+    filter: blur(0);
+    opacity: 1;
+  }
+  50% {
+    filter: blur(5px);
+    opacity: 0.45;
+  }
+}
+
+@keyframes seating-reveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.32) translateY(14px);
+    filter: blur(8px);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1.08) translateY(-5px);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}

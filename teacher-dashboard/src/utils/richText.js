@@ -102,14 +102,27 @@ function styleAt(runs, offset, fallback) {
   return runs[runs.length - 1]
 }
 
-export function syncRunsWithPlain(runs, nextPlain, fallbackStyle) {
+function styleForInsert(base, insertStyle) {
+  if (!insertStyle) return base
+  return {
+    ...base,
+    ...(insertStyle.bold !== undefined ? { bold: insertStyle.bold } : {}),
+    ...(insertStyle.underline !== undefined ? { underline: insertStyle.underline } : {}),
+  }
+}
+
+export function syncRunsWithPlain(runs, nextPlain, fallbackStyle, insertStyle) {
   const prev = runsToPlain(runs)
   if (nextPlain === prev) return runs
   if (!nextPlain) return []
-  if (!runs.length) return plainToRuns(nextPlain, fallbackStyle)
+  if (!runs.length) return plainToRuns(nextPlain, styleForInsert(fallbackStyle, insertStyle))
   if (nextPlain.startsWith(prev)) {
     const extra = nextPlain.slice(prev.length)
     const last = runs[runs.length - 1]
+    const nextStyle = styleForInsert(last, insertStyle)
+    if (insertStyle && !sameStyle(last, nextStyle)) {
+      return mergeRuns([...runs, createRun(extra, nextStyle)])
+    }
     return mergeRuns([...runs.slice(0, -1), { ...last, text: last.text + extra }])
   }
   if (prev.startsWith(nextPlain)) {
@@ -133,7 +146,10 @@ export function syncRunsWithPlain(runs, nextPlain, fallbackStyle) {
   const tail = suffix ? sliceRuns(runs, prev.length - suffix, prev.length) : []
   const mid = nextPlain.slice(prefix, nextPlain.length - suffix)
   if (!mid) return mergeRuns([...head, ...tail])
-  const midStyle = styleAt(runs, Math.min(prefix, Math.max(0, prev.length - 1)), fallbackStyle)
+  const midStyle = styleForInsert(
+    styleAt(runs, Math.min(prefix, Math.max(0, prev.length - 1)), fallbackStyle),
+    insertStyle,
+  )
   return mergeRuns([...head, createRun(mid, midStyle), ...tail])
 }
 
@@ -277,19 +293,51 @@ export function getScheduleSlots(schedule) {
   return []
 }
 
+export const WEEKDAY_OPTIONS = [
+  { id: 1, label: "월" },
+  { id: 2, label: "화" },
+  { id: 3, label: "수" },
+  { id: 4, label: "목" },
+  { id: 5, label: "금" },
+  { id: 6, label: "토" },
+  { id: 0, label: "일" },
+]
+
+export const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5]
+
+export function normalizeWeekdays(value) {
+  if (!Array.isArray(value)) return [0, 1, 2, 3, 4, 5, 6]
+  const next = [...new Set(value.map(Number).filter((day) => day >= 0 && day <= 6))]
+  return next.length ? next : [0, 1, 2, 3, 4, 5, 6]
+}
+
+export function formatWeekdaysLabel(weekdays) {
+  const days = normalizeWeekdays(weekdays)
+  if (days.length === 7) return "매일"
+  return WEEKDAY_OPTIONS.filter((item) => days.includes(item.id))
+    .map((item) => item.label)
+    .join("")
+}
+
 export function formatSlotsLabel(schedule) {
-  return getScheduleSlots(schedule)
+  const times = getScheduleSlots(schedule)
     .map((slot) => `${slot.start}–${slot.end}`)
     .join(", ")
+  return `${formatWeekdaysLabel(schedule.weekdays)} ${times}`.trim()
 }
 
 export function createDraftSlot(start = "09:00", end = "09:10") {
   return { id: crypto.randomUUID(), start, end }
 }
 
+export function isWeekdayMatch(schedule, date) {
+  return normalizeWeekdays(schedule?.weekdays).includes(date.getDay())
+}
+
 export function findActiveSchedule(schedules, date) {
   let active = null
   for (const schedule of schedules) {
+    if (!isWeekdayMatch(schedule, date)) continue
     const matches = getScheduleSlots(schedule).some((slot) =>
       isTimeInRange(slot.start, slot.end, date),
     )

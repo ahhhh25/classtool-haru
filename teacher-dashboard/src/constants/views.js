@@ -4,5 +4,6 @@ export const VIEWS = {
   noticebook: "noticebook",
   timer: "timer",
   picker: "picker",
+  seating: "seating",
   settings: "settings",
 }

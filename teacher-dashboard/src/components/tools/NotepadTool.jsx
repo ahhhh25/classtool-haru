@@ -58,7 +58,7 @@ function emptyNote() {
     fontSize: 36,
     lineHeight: "normal",
     textColor: DEFAULT_TEXT_COLOR,
-    bold: true,
+    bold: false,
     underline: false,
     updatedAt: new Date().toISOString(),
   }
@@ -108,6 +108,9 @@ export default function NotepadTool({ active = true }) {
   const applyingRemote = useRef(false)
   const applyNoteToEditorRef = useRef(() => {})
   const canvasApiRef = useRef(null)
+  const [oneShotMarks, setOneShotMarks] = useState({ bold: false, underline: false })
+  const oneShotRef = useRef(oneShotMarks)
+  oneShotRef.current = oneShotMarks
 
   notesRef.current = notes
   activeIdRef.current = activeId
@@ -299,18 +302,38 @@ export default function NotepadTool({ active = true }) {
     }
   }
 
+  const consumeOneShot = () => {
+    const marks = oneShotRef.current
+    if (!marks.bold && !marks.underline) return
+    if (marks.bold && document.queryCommandState("bold")) document.execCommand("bold")
+    if (marks.underline && document.queryCommandState("underline")) document.execCommand("underline")
+    setOneShotMarks({ bold: false, underline: false })
+  }
+
   const patchStyle = (patch) => {
     const editor = editorRef.current
     const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
       lined: activeNote?.bgMode === "lined",
       lineHeight: activeNote?.lineHeight,
     })
+    const persistPatch = { ...patch }
+    if (patch.bold != null || patch.underline != null) {
+      if (appliedToSelection) setOneShotMarks({ bold: false, underline: false })
+      else {
+        setOneShotMarks((current) => ({
+          bold: patch.bold ?? current.bold,
+          underline: patch.underline ?? current.underline,
+        }))
+      }
+      delete persistPatch.bold
+      delete persistPatch.underline
+    }
     persist(
       notesRef.current.map((note) =>
         note.id === activeIdRef.current
           ? {
               ...note,
-              ...(appliedToSelection ? {} : patch),
+              ...(appliedToSelection ? {} : persistPatch),
               content: editor?.innerHTML ?? note.content,
               title: titleFromContent(editor?.innerHTML ?? note.content),
               updatedAt: new Date().toISOString(),
@@ -523,8 +546,8 @@ export default function NotepadTool({ active = true }) {
               widget={{
                 fontFamily: activeNote?.fontFamily ?? DEFAULT_FONT.id,
                 fontSize: activeNote?.fontSize ?? 36,
-                bold: Boolean(activeNote?.bold),
-                underline: Boolean(activeNote?.underline),
+                bold: oneShotMarks.bold,
+                underline: oneShotMarks.underline,
                 textColor: activeNote?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -536,8 +559,8 @@ export default function NotepadTool({ active = true }) {
               widget={{
                 fontFamily: activeNote?.fontFamily ?? DEFAULT_FONT.id,
                 fontSize: activeNote?.fontSize ?? 36,
-                bold: Boolean(activeNote?.bold),
-                underline: Boolean(activeNote?.underline),
+                bold: oneShotMarks.bold,
+                underline: oneShotMarks.underline,
                 textColor: activeNote?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -550,8 +573,8 @@ export default function NotepadTool({ active = true }) {
               widget={{
                 fontFamily: activeNote?.fontFamily ?? DEFAULT_FONT.id,
                 fontSize: activeNote?.fontSize ?? 36,
-                bold: Boolean(activeNote?.bold),
-                underline: Boolean(activeNote?.underline),
+                bold: oneShotMarks.bold,
+                underline: oneShotMarks.underline,
                 textColor: activeNote?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -701,8 +724,14 @@ export default function NotepadTool({ active = true }) {
                   contentEditable
                   suppressContentEditableWarning
                   className="relative z-10 min-h-full w-full text-ink outline-none"
-                  onInput={scheduleSave}
-                  onBlur={flushEditorAndSync}
+                  onInput={() => {
+                    consumeOneShot()
+                    scheduleSave()
+                  }}
+                  onBlur={() => {
+                    consumeOneShot()
+                    flushEditorAndSync()
+                  }}
                   onBeforeInput={canvas.markTextHistory}
                   onPaste={canvas.markTextHistory}
                   onMouseUp={rememberSelection}

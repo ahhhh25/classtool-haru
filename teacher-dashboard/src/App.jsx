@@ -9,6 +9,7 @@ import WidgetCard from "./components/WidgetCard"
 import NotepadTool from "./components/tools/NotepadTool"
 import NoticeBookTool from "./components/tools/NoticeBookTool"
 import PickerTool from "./components/tools/PickerTool"
+import SeatingTool from "./components/tools/SeatingTool"
 import TimerTool from "./components/tools/TimerTool"
 import { VIEWS } from "./constants/views"
 import { useTheme } from "./theme/ThemeProvider"
@@ -262,6 +263,22 @@ export default function App() {
           groupMode={pickerGroupMode}
           onSelectSub={openPickerSub}
           onSelectGroup={openPickerGroup}
+        />
+      </div>
+      <div className={activeView === VIEWS.seating ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+        <SeatingTool
+          active={activeView === VIEWS.seating}
+          onOpenStudents={() => {
+            setActiveView(VIEWS.settings)
+            setSettingsSub("students")
+            setFocusedWidgetId(null)
+            syncSend(SYNC.VIEW_CHANGE, {
+              view: VIEWS.settings,
+              pickerSub,
+              pickerGroupMode,
+              settingsSub: "students",
+            })
+          }}
         />
       </div>
       {activeView === VIEWS.settings && settingsSub === "students" ? (

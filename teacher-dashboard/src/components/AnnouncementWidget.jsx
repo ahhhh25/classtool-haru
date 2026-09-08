@@ -88,34 +88,63 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
   const selectionRef = useRef(null)
   const editorFlushRef = useRef(null)
   const [selection, setSelection] = useState(null)
+  const [oneShotMarks, setOneShotMarks] = useState(null)
   draftRef.current = draft
   const runs = itemRuns(draft)
+  const runToolbar = toolbarFromItem(draft, selection)
+  const toolbarWidget = {
+    ...runToolbar,
+    bold: selection ? runToolbar.bold : Boolean(oneShotMarks?.bold),
+    underline: selection ? runToolbar.underline : Boolean(oneShotMarks?.underline),
+  }
 
   const applyStyle = (patch) => {
     if (patch.fontSize != null) setComposeFontSize(patch.fontSize)
     const flushed = editorFlushRef.current?.()
     const currentRuns = flushed ?? itemRuns(draftRef.current)
     const runPatch = widgetPatchToRunPatch(patch)
-    if (!Object.keys(runPatch).length) {
-      onChange({ ...patch })
+    const oneShot = patch.bold != null || patch.underline != null
+    const sticky = { ...patch }
+    delete sticky.bold
+    delete sticky.underline
+    const range = selectionRef.current
+
+    if (range && Object.keys(runPatch).length) {
+      const nextRuns = applyStyleToRange(currentRuns, range.start, range.end, runPatch)
+      onChange({ ...sticky, runs: nextRuns })
+      if (oneShot) setOneShotMarks({ bold: false, underline: false })
       return
     }
-    const range = selectionRef.current
-    const nextRuns = range
-      ? applyStyleToRange(currentRuns, range.start, range.end, runPatch)
-      : applyStyleToRange(currentRuns, 0, runsToPlain(currentRuns).length, runPatch)
-    onChange({ ...patch, runs: nextRuns })
+
+    if (oneShot) {
+      setOneShotMarks((current) => ({
+        bold: patch.bold ?? current?.bold ?? false,
+        underline: patch.underline ?? current?.underline ?? false,
+      }))
+    }
+
+    const stickyRun = widgetPatchToRunPatch(sticky)
+    if (!Object.keys(stickyRun).length) {
+      if (Object.keys(sticky).length) onChange({ ...sticky })
+      return
+    }
+    const nextRuns = applyStyleToRange(currentRuns, 0, runsToPlain(currentRuns).length, stickyRun)
+    onChange({ ...sticky, runs: nextRuns })
   }
 
   return (
     <SettingsModal title={title} onClose={onClose} fit>
       <div className="shrink-0 border-b border-line">
-        <WidgetSettings widget={toolbarFromItem(draft, selection)} onChange={applyStyle} compact bare />
+        <WidgetSettings widget={toolbarWidget} onChange={applyStyle} compact bare />
       </div>
       <div className="space-y-3 px-4 py-4">
         <RichTextEditor
           runs={runs}
-          fallbackStyle={itemFallback(draft)}
+          fallbackStyle={{
+            ...itemFallback(draft),
+            bold: Boolean(oneShotMarks?.bold),
+            underline: Boolean(oneShotMarks?.underline),
+          }}
           theme={theme}
           ariaLabel="알림 내용"
           flushRef={editorFlushRef}
@@ -124,6 +153,8 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
             setSelection(range)
           }}
           onChangeRuns={(nextRuns) => onChange({ runs: nextRuns })}
+          insertStyle={oneShotMarks}
+          onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false })}
           className="widget-scroll h-[17rem] overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-3 py-2.5 outline-none focus:border-line-strong"
           style={{
             color: contentColor(draft.textColor, theme),

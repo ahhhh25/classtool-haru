@@ -1,10 +1,11 @@
 import { Lock, LockOpen, Maximize2, Minimize2, Plus, Settings, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { fontFamilyCss } from "../constants/fonts"
 import { chromeInkOnBackground, widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import { isKioskLinked, useKioskLink } from "../utils/kioskLinkStore"
+import { findActiveSchedule } from "../utils/richText"
 import AnnouncementWidget from "./AnnouncementWidget"
 import CheckboardWidget, { CheckboardSettings } from "./CheckboardWidget"
 import ClockWidget from "./ClockWidget"
@@ -52,11 +53,28 @@ export default function WidgetCard({
 }) {
   const [addItemOpen, setAddItemOpen] = useState(false)
   const [lockCloseAlert, setLockCloseAlert] = useState(false)
+  const [now, setNow] = useState(() => new Date())
   const { theme } = useTheme()
   const kioskLink = useKioskLink()
   const checkboardLinked = widget.type === "checkboard" && isKioskLinked(kioskLink)
   const transparent = widget.type === "date" || widget.type === "clock" || widget.type === "dday"
-  const customBg = widget.type === "announcement" ? null : widgetBackground(widget.bgColor, theme)
+  const noticeAuto = widget.type === "notice" && widget.notice?.mode === "auto"
+
+  useEffect(() => {
+    if (!noticeAuto) return undefined
+    const timer = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(timer)
+  }, [noticeAuto])
+
+  const activeNoticeBg = useMemo(() => {
+    if (!noticeAuto) return null
+    return findActiveSchedule(widget.notice?.schedules ?? [], now)?.bgColor ?? null
+  }, [noticeAuto, widget.notice?.schedules, now])
+
+  const customBg =
+    widget.type === "announcement"
+      ? null
+      : widgetBackground(activeNoticeBg || widget.bgColor, theme)
   const chromeInk = chromeInkOnBackground(customBg)
   const cardStyle = customBg
     ? {
