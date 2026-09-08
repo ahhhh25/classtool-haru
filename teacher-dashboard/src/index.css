@@ -634,59 +634,22 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .seating-board-wrap {
-  padding-inline: 2%;
+  padding-inline: 0;
 }
 
 .seating-board {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 3.4rem;
-  border: 7px solid #8a6230;
-  border-radius: 3px;
-  background:
-    radial-gradient(ellipse at 50% 8%, rgba(255, 255, 255, 0.1), transparent 52%),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 11px,
-      rgba(255, 255, 255, 0.025) 11px,
-      rgba(255, 255, 255, 0.025) 12px
-    ),
-    #1b4a3a;
-  color: #f4f7f2;
-  font-size: 15px;
+  height: 2.75rem;
+  border: 1px solid color-mix(in srgb, #e87a32 82%, white 18%);
+  border-radius: 8px;
+  background: #e87a32;
+  color: #1c1917;
+  font-size: 17px;
   font-weight: 700;
-  letter-spacing: 0.62em;
-  text-indent: 0.62em;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 14px 22px rgba(0, 0, 0, 0.28),
-    inset 0 -10px 16px rgba(0, 0, 0, 0.18),
-    0 5px 0 #5d401c,
-    0 10px 18px rgba(0, 0, 0, 0.28);
-}
-
-.seating-board.is-large {
-  height: 4.25rem;
-  font-size: 20px;
-  border-width: 8px;
-}
-
-html.light .seating-board {
-  background:
-    radial-gradient(ellipse at 50% 8%, rgba(255, 255, 255, 0.12), transparent 52%),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 11px,
-      rgba(255, 255, 255, 0.03) 11px,
-      rgba(255, 255, 255, 0.03) 12px
-    ),
-    #215744;
-  border-color: #9a7038;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
 }
 
 .seating-stage {

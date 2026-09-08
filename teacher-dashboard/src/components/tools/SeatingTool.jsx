@@ -58,12 +58,10 @@ function Section({ icon: Icon, title, children }) {
   )
 }
 
-function Chalkboard({ large = false }) {
+function Chalkboard() {
   return (
-    <div className={`seating-board-wrap w-full ${large ? "mb-6" : "mb-4"}`}>
-      <div className={`seating-board ${large ? "is-large" : ""}`} aria-hidden>
-        <span>칠 판</span>
-      </div>
+    <div className="seating-board-wrap mb-4 w-full">
+      <div className="seating-board">칠판</div>
     </div>
   )
 }
@@ -200,7 +198,7 @@ function SeatGrid({
 
   const classroom = (
     <>
-      {!teacherView && <Chalkboard large={false} />}
+      {!teacherView && <Chalkboard />}
       <div className="seating-stage flex flex-nowrap justify-center gap-4">
         {groups.map((cols, gi) => (
           <div key={`g-${gi}`} className={`flex flex-col ${present ? "gap-1.5" : "gap-2"}`}>
@@ -236,8 +234,8 @@ function SeatGrid({
         ))}
       </div>
       {teacherView && (
-        <div className={present ? "mt-4 w-full" : "mt-5 w-full"}>
-          <Chalkboard large={false} />
+        <div className="mt-4 w-full">
+          <Chalkboard />
         </div>
       )}
     </>
