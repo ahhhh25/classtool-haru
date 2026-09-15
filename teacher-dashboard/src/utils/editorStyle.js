@@ -227,16 +227,13 @@ export function isNoticeDatePast(noticeDate, today = kstDateKey()) {
 }
 
 export function inferNoticeDate(raw) {
-  if (typeof raw?.noticeDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.noticeDate)) {
-    return raw.noticeDate
+  if (typeof raw?.noticeDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.noticeDate.trim())) {
+    return raw.noticeDate.trim()
   }
   const titleMatch = String(raw?.title || "").match(/(\d{1,2})월\s*(\d{1,2})일/)
-  const fromUpdated = raw?.updatedAt ? kstDateKey(new Date(raw.updatedAt)) : null
-  if (titleMatch) {
-    const year = (fromUpdated || kstDateKey()).slice(0, 4)
-    const month = String(titleMatch[1]).padStart(2, "0")
-    const day = String(titleMatch[2]).padStart(2, "0")
-    return `${year}-${month}-${day}`
-  }
-  return fromUpdated
+  if (!titleMatch) return ""
+  const year = kstDateKey().slice(0, 4)
+  const month = String(titleMatch[1]).padStart(2, "0")
+  const day = String(titleMatch[2]).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }

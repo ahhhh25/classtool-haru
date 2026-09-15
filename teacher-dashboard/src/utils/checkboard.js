@@ -39,6 +39,43 @@ export function visibleItems(items) {
   return (Array.isArray(items) ? items : []).filter((item) => item.visible !== false)
 }
 
+/** insertSlot is 0..items.length (the gap before that index, or after the last item). */
+export function reorderItems(items, fromIndex, insertSlot) {
+  if (!Array.isArray(items) || fromIndex < 0 || fromIndex >= items.length) return items
+  let dest = insertSlot
+  if (fromIndex < insertSlot) dest -= 1
+  dest = Math.max(0, Math.min(dest, items.length - 1))
+  if (dest === fromIndex) return items
+  const next = [...items]
+  const [row] = next.splice(fromIndex, 1)
+  next.splice(dest, 0, row)
+  return next
+}
+
+export function reorderVisibleItems(items, fromVisibleIndex, insertSlot) {
+  const shown = visibleItems(items)
+  const nextShown = reorderItems(shown, fromVisibleIndex, insertSlot)
+  if (nextShown === shown) return items
+  let index = 0
+  return items.map((item) => (item.visible === false ? item : nextShown[index++]))
+}
+
+export function patchCheckItem(items, id, patch) {
+  return (Array.isArray(items) ? items : []).map((item) =>
+    item.id === id ? { ...item, ...patch } : item,
+  )
+}
+
+export function resolveCheckItemStyle(item, widget) {
+  return {
+    fontFamily: item?.fontFamily || widget.fontFamily,
+    fontSize: Number(item?.fontSize ?? widget.fontSize),
+    textColor: item?.color || widget.textColor,
+    bold: item?.bold ?? Boolean(widget.bold),
+    underline: item?.underline ?? Boolean(widget.underline),
+  }
+}
+
 export function isStudentSettled(student, items, checks) {
   if (!items.length) return false
   return items.every((item) => Boolean(checks[student.id]?.[item.id]))

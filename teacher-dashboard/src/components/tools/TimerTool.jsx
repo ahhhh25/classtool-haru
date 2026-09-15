@@ -30,7 +30,17 @@ function pad(value) {
   return String(value).padStart(2, "0")
 }
 
-function formatClock(ms) {
+function formatClock(ms, mode = "timer") {
+  if (mode === "stopwatch") {
+    const total = Math.max(0, Math.floor(ms))
+    const centiseconds = Math.floor(total / 10) % 100
+    const totalSeconds = Math.floor(total / 1000)
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    if (hours > 0) return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}:${pad(centiseconds)}`
+    return `${pad(minutes)}:${pad(seconds)}:${pad(centiseconds)}`
+  }
   const total = Math.max(0, Math.ceil(ms / 1000))
   const hours = Math.floor(total / 3600)
   const minutes = Math.floor((total % 3600) / 60)
@@ -475,14 +485,16 @@ export default function TimerTool() {
       </div>
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-        <p
-          key={lastTen ? pulseSecond : "clock"}
-          className={`timer-clock font-semibold tabular-nums text-ink ${
-            lastTen ? "text-accent timer-clock-pulse" : ""
-          } ${lastThree ? "is-final" : ""}`}
-        >
-          {formatClock(displayMs)}
-        </p>
+        <div className="timer-clock-wrap">
+          <p
+            key={lastTen ? pulseSecond : "clock"}
+            className={`timer-clock font-semibold tabular-nums text-ink ${
+              lastTen ? "text-accent timer-clock-pulse" : ""
+            } ${lastThree ? "is-final" : ""}`}
+          >
+            {formatClock(displayMs, mode)}
+          </p>
+        </div>
 
         {mode === "timer" && (
           <div className="mt-8 w-full max-w-5xl">

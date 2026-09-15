@@ -14,9 +14,6 @@ import ConfettiBurst from "./ConfettiBurst"
 import { createPickerAudio } from "../../utils/pickerAudio"
 import { subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
 
-const NAME_TILE =
-  "rounded-md border px-1 py-1 text-center text-[16px] font-semibold leading-tight sm:text-[17px]"
-
 function loadGroupPrefs() {
   const stored = loadJson(PICKER_PREFS_KEY, {}) || {}
   const shared = clampGroupCount(stored.total ?? stored.pickTotal, 4)
@@ -220,13 +217,13 @@ function IndividualPick({ students }) {
         </label>
       </div>
 
-      <div className="relative flex h-[12rem] flex-col items-center justify-center overflow-hidden rounded-xl border border-line bg-sunken p-6 sm:h-[14rem]">
+      <div className="relative flex h-[12rem] shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl border border-line bg-sunken p-6 sm:h-[14rem]">
         <ConfettiBurst burstId={burstId} />
         <p className="text-center text-[80px] font-semibold leading-none text-ink sm:text-[112px]">{display}</p>
         {subText ? <p className="mt-2 text-[13px] text-muted">{subText}</p> : null}
       </div>
 
-      <div className="flex justify-center gap-2">
+      <div className="flex shrink-0 justify-center gap-2">
         <button
           type="button"
           disabled={busy}
@@ -249,31 +246,75 @@ function IndividualPick({ students }) {
         </button>
       </div>
 
-      <div
-        className={`grid rounded-xl border border-line bg-sunken ${
-          students.length > 24 ? "gap-1.5 p-2.5" : "gap-2 p-3"
-        }`}
-        style={{
-          gridTemplateColumns: `repeat(${Math.max(6, Math.min(10, Math.ceil(Math.max(students.length, 1) / 4)))}, minmax(0, 1fr))`,
-        }}
-      >
-        {students.length === 0 && (
-          <p className="col-span-full py-6 text-center text-[12px] text-faint">학생 명단을 추가하면 여기에 표시됩니다.</p>
-        )}
-        {students.map((st) => {
-          const picked = pickedIds.has(st.id)
-          return (
-            <div
-              key={st.id}
-              className={`${NAME_TILE} ${students.length > 28 ? "py-0.5 text-[15px] sm:text-[16px]" : ""} ${
-                picked ? "border-line text-faint line-through opacity-70" : "border-line bg-widget text-ink"
-              }`}
-            >
-              {st.name}
-            </div>
-          )
-        })}
-      </div>
+      <IndividualRoster students={students} pickedIds={pickedIds} />
+    </div>
+  )
+}
+
+function IndividualRoster({ students, pickedIds }) {
+  const wrapRef = useRef(null)
+  const [metrics, setMetrics] = useState({ cols: 8, rows: 4, fontPx: 18, gap: 8, pad: 12 })
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return undefined
+
+    const layout = () => {
+      const n = students.length
+      const { width, height } = el.getBoundingClientRect()
+      if (width < 16 || height < 16) return
+      const count = Math.max(n, 1)
+      const cols = Math.max(6, Math.min(10, Math.ceil(count / 4)))
+      const rows = Math.max(1, Math.ceil(count / cols))
+      const gap = n > 24 ? 6 : 8
+      const pad = n > 24 ? 10 : 12
+      const cellH = (height - pad * 2 - gap * (rows - 1)) / rows
+      const cellW = (width - pad * 2 - gap * (cols - 1)) / cols
+      const fontPx = Math.max(15, Math.min(cellH * 0.46, cellW * 0.36, 34))
+      setMetrics({ cols, rows, fontPx, gap, pad })
+    }
+
+    layout()
+    const observer = new ResizeObserver(layout)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [students.length])
+
+  return (
+    <div
+      ref={wrapRef}
+      className="min-h-0 flex-1 overflow-hidden rounded-xl border border-line bg-sunken"
+    >
+      {students.length === 0 ? (
+        <p className="flex h-full items-center justify-center text-[12px] text-faint">
+          학생 명단을 추가하면 여기에 표시됩니다.
+        </p>
+      ) : (
+        <div
+          className="grid h-full min-h-0"
+          style={{
+            gridTemplateColumns: `repeat(${metrics.cols}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${metrics.rows}, minmax(0, 1fr))`,
+            gap: metrics.gap,
+            padding: metrics.pad,
+          }}
+        >
+          {students.map((st) => {
+            const picked = pickedIds.has(st.id)
+            return (
+              <div
+                key={st.id}
+                className={`flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-md border px-1.5 text-center font-semibold leading-tight ${
+                  picked ? "border-line text-faint line-through opacity-70" : "border-line bg-widget text-ink"
+                }`}
+                style={{ fontSize: `${metrics.fontPx}px` }}
+              >
+                <span className="min-w-0 truncate">{st.name}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

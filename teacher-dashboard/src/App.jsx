@@ -100,7 +100,19 @@ export default function App() {
 
   const updateWidget = useCallback((id, patch) => {
     setWidgets((current) =>
-      current.map((widget) => (widget.id === id ? { ...widget, ...patch } : widget)),
+      current.map((widget) => {
+        if (widget.id !== id) return widget
+        const resolved = typeof patch === "function" ? patch(widget) : patch
+        if (!resolved || Object.keys(resolved).length === 0) return widget
+        if (widget.type === "checkboard" && resolved.checkboard && widget.checkboard) {
+          return {
+            ...widget,
+            ...resolved,
+            checkboard: { ...widget.checkboard, ...resolved.checkboard },
+          }
+        }
+        return { ...widget, ...resolved }
+      }),
     )
   }, [])
 

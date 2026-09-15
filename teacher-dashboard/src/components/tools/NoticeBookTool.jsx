@@ -62,8 +62,8 @@ function hydrateNotice(raw) {
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
     lineHeight: raw.lineHeight || "normal",
-    noticeDate: inferNoticeDate(raw),
-    kept: Boolean(raw.kept),
+    noticeDate: inferNoticeDate(raw) || kstDateKey(),
+    kept: false,
   }
 }
 
@@ -72,7 +72,14 @@ export default function NoticeBookTool() {
   const [notices, setNotices] = useState(() => {
     const loaded = loadJson(NOTICES_KEY, [])
     const hydrated = Array.isArray(loaded) ? loaded.map(hydrateNotice).filter(Boolean) : []
-    if (hydrated.length > 0) return hydrated
+    const auto = Boolean(loadJson(AUTO_DELETE_KEY, false))
+    const kept = auto
+      ? hydrated.filter((item) => !isNoticeDatePast(item.noticeDate))
+      : hydrated
+    if (kept.length > 0) {
+      if (auto && kept.length !== hydrated.length) saveJson(NOTICES_KEY, kept)
+      return kept
+    }
     const created = emptyNotice()
     saveJson(NOTICES_KEY, [created])
     return [created]
@@ -141,24 +148,25 @@ export default function NoticeBookTool() {
   const pruneExpired = useCallback(() => {
     if (!loadJson(AUTO_DELETE_KEY, false)) return
     const current = noticesRef.current
-    const remaining = current.filter((item) => item.kept || !isNoticeDatePast(item.noticeDate))
+    const remaining = current.filter(
+      (item) => !isNoticeDatePast(item.noticeDate || inferNoticeDate(item)),
+    )
     if (remaining.length === current.length) return
+    window.clearTimeout(saveTimer.current)
+    let nextList = remaining
+    let nextId = activeIdRef.current
     if (remaining.length === 0) {
       const created = emptyNotice()
-      persist([created])
-      setActiveId(created.id)
-      flushNoticeWith(created.id)
-      return
+      nextList = [created]
+      nextId = created.id
+    } else if (!remaining.some((item) => item.id === activeIdRef.current)) {
+      nextId = remaining[0].id
     }
-    persist(remaining)
-    if (!remaining.some((item) => item.id === activeIdRef.current)) {
-      setActiveId(remaining[0].id)
-    }
-    flushNoticeWith(
-      remaining.some((item) => item.id === activeIdRef.current)
-        ? activeIdRef.current
-        : remaining[0].id,
-    )
+    persist(nextList)
+    if (nextId !== activeIdRef.current) setActiveId(nextId)
+    const shown = nextList.find((item) => item.id === nextId)
+    if (shown) applyNoticeRef.current(shown)
+    flushNoticeWith(nextId)
   }, [persist])
 
   useEffect(() => {
@@ -191,6 +199,7 @@ export default function NoticeBookTool() {
               ...item,
               content: editor.innerHTML,
               title: item.title || todayNoticeTitle(),
+              noticeDate: item.noticeDate || inferNoticeDate(item) || kstDateKey(),
               updatedAt: new Date().toISOString(),
             }
           : item,

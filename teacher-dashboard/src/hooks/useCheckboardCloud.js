@@ -40,17 +40,12 @@ export function useCheckboardCloud(widget, onChange) {
           live.completions && typeof live.completions === "object" ? live.completions : {}
         setStatus("live")
         setError("")
-        const currentBoard = boardRef.current
-        const patch = liveToBoardPatch(live, currentBoard)
-        if (!patch) return
         applyingRemote.current = true
-        onChangeRef.current({
-          checkboard: {
-            ...currentBoard,
-            students: [],
-            items: currentBoard.items,
-            checks: patch.checks,
-          },
+        onChangeRef.current((current) => {
+          const board = current.checkboard
+          const patch = liveToBoardPatch(live, board)
+          if (!patch) return {}
+          return { checkboard: { checks: patch.checks } }
         })
         queueMicrotask(() => {
           applyingRemote.current = false

@@ -185,7 +185,8 @@ function SeatGrid({
       const fw = content.offsetWidth
       const fh = content.offsetHeight
       if (!sw || !sh || !fw || !fh) return
-      const scale = Math.min(sw / fw, sh / fh) * 0.98
+      const fill = present ? 0.98 : 0.7
+      const scale = Math.min(sw / fw, sh / fh) * fill
       setFit({ scale, width: Math.round(fw * scale), height: Math.round(fh * scale) })
     }
 

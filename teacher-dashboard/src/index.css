@@ -479,10 +479,21 @@ input[type="number"]::-webkit-outer-spin-button {
   padding: var(--name-py, 0.25rem) var(--name-px-pad, 0.5rem);
 }
 
+.timer-clock-wrap {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
 .timer-clock {
-  font-size: clamp(4.5rem, 18vw, 14rem);
+  font-size: clamp(2.75rem, 13cqi, 9.5rem);
   line-height: 0.9;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .timer-clock-pulse {
