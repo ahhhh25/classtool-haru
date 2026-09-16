@@ -31,8 +31,23 @@ export function createAnnouncementItem(style = {}) {
   }
 }
 
-export function createAnnouncementState(items = []) {
-  return { items }
+export function createAnnouncementState(items = [], phrases = []) {
+  return { items, phrases }
+}
+
+export function cloneAnnouncementItem(raw) {
+  const item = createAnnouncementItem({
+    fontFamily: raw?.fontFamily,
+    fontSize: raw?.fontSize,
+    textColor: raw?.textColor,
+    bgColor: raw?.bgColor,
+    bold: raw?.bold,
+    underline: raw?.underline,
+  })
+  return {
+    ...item,
+    runs: Array.isArray(raw?.runs) ? raw.runs.map((run) => ({ ...run })) : item.runs,
+  }
 }
 
 /** insertSlot is 0..items.length (the gap before that index, or after the last item). */

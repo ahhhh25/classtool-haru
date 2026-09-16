@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { Settings, Trash2 } from "lucide-react"
+import { Plus, Settings, Trash2 } from "lucide-react"
 import { widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
-import { createAnnouncementItem, reorderAnnouncements } from "../utils/announcement"
+import { cloneAnnouncementItem, createAnnouncementItem, reorderAnnouncements } from "../utils/announcement"
 import { getComposeFontSize, setComposeFontSize } from "../utils/composeFontSize"
 import {
   applyStyleToRange,
@@ -83,7 +83,20 @@ function RichRuns({ runs, theme, className, textScale = 1 }) {
   )
 }
 
-function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, onClose, onConfirm, theme }) {
+function AnnouncementEditorModal({
+  title,
+  confirmLabel,
+  hint,
+  draft,
+  phrases = [],
+  onChange,
+  onClose,
+  onConfirm,
+  onSavePhrase,
+  onDeletePhrase,
+  onApplyPhrase,
+  theme,
+}) {
   const draftRef = useRef(draft)
   const selectionRef = useRef(null)
   const editorFlushRef = useRef(null)
@@ -164,7 +177,21 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
           }}
         />
         {hint && <p className="text-[12px] text-muted">{hint}</p>}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const flushed = editorFlushRef.current?.()
+              const runs = flushed ?? itemRuns(draftRef.current)
+              const text = runsToPlain(runs).replace(/^\s+|\s+$/g, "")
+              if (!text) return
+              onSavePhrase?.({ ...draftRef.current, runs: runs.map((run) => ({ ...run })) })
+            }}
+            className="flex h-9 items-center gap-1 rounded-md border border-line px-3 text-[13px] text-icon transition-colors hover:bg-hover hover:text-ink"
+          >
+            <Plus size={15} strokeWidth={1.5} />
+            자주 쓰는 목록에 추가
+          </button>
           <button
             type="button"
             onClick={onConfirm}
@@ -173,6 +200,32 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
             {confirmLabel}
           </button>
         </div>
+        <ul className="max-h-40 space-y-1.5 overflow-y-auto">
+          {phrases.length === 0 && (
+            <li className="text-[12px] text-faint">저장된 문구가 없습니다.</li>
+          )}
+          {phrases.map((item) => (
+            <li key={item.id}>
+              <div className="flex w-full items-start gap-2 rounded-md border border-line px-2.5 py-2">
+                <button
+                  type="button"
+                  onClick={() => onApplyPhrase?.(item)}
+                  className="min-w-0 flex-1 text-left text-[13px] leading-snug whitespace-pre-wrap text-ink-soft"
+                >
+                  {runsToPlain(itemRuns(item)) || "내용 없음"}
+                </button>
+                <button
+                  type="button"
+                  aria-label="문구 삭제"
+                  onClick={() => onDeletePhrase?.(item.id)}
+                  className="flex size-6 shrink-0 items-center justify-center rounded text-icon hover:bg-hover hover:text-ink"
+                >
+                  <Trash2 size={14} strokeWidth={1.5} />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </SettingsModal>
   )
@@ -180,7 +233,8 @@ function AnnouncementEditorModal({ title, confirmLabel, hint, draft, onChange, o
 
 export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCloseAddItem, textScale = 1 }) {
   const { theme } = useTheme()
-  const board = widget.announcement ?? { items: [] }
+  const board = widget.announcement ?? { items: [], phrases: [] }
+  const phrases = Array.isArray(board.phrases) ? board.phrases : []
   const [editor, setEditor] = useState(null)
   const [dragId, setDragId] = useState(null)
   const [dropSlot, setDropSlot] = useState(null)
@@ -199,6 +253,10 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
 
   const updateItems = (items) => {
     onChange({ announcement: { ...board, items } })
+  }
+
+  const updatePhrases = (nextPhrases) => {
+    onChange({ announcement: { ...board, phrases: nextPhrases } })
   }
 
   const finishDrag = (clientY) => {
@@ -360,6 +418,7 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
               : null
           }
           draft={editor.item}
+          phrases={phrases}
           theme={theme}
           onChange={(patch) => {
             const item = { ...editor.item, ...patch }
@@ -375,6 +434,19 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
             ) {
               onChange(rememberStyle(item))
             }
+          }}
+          onSavePhrase={(item) => {
+            updatePhrases([...phrases, cloneAnnouncementItem(item)])
+          }}
+          onDeletePhrase={(id) => {
+            updatePhrases(phrases.filter((entry) => entry.id !== id))
+          }}
+          onApplyPhrase={(phrase) => {
+            setEditor((current) => {
+              if (!current) return current
+              const next = cloneAnnouncementItem(phrase)
+              return { ...current, item: { ...next, id: current.item.id } }
+            })
           }}
           onClose={() => {
             setEditor(null)

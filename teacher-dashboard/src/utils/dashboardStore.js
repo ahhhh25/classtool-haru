@@ -118,7 +118,10 @@ function hydrateWidget(raw) {
     const items = Array.isArray(raw.announcement?.items)
       ? raw.announcement.items.map(hydrateAnnouncementItem).filter(Boolean)
       : []
-    widget.announcement = createAnnouncementState(items)
+    const phrases = Array.isArray(raw.announcement?.phrases)
+      ? raw.announcement.phrases.map(hydrateAnnouncementItem).filter(Boolean)
+      : []
+    widget.announcement = createAnnouncementState(items, phrases)
   }
   if (widget.type === "dday") {
     widget.dday = createDdayState(raw.dday)

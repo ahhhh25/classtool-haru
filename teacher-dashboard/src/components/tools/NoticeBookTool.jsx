@@ -504,7 +504,7 @@ export default function NoticeBookTool() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line px-6 py-5">
-            <h3 className="min-w-0 text-[42px] leading-none font-semibold tracking-tight text-ink">
+            <h3 className="min-w-0 text-[63px] leading-none font-semibold tracking-tight text-ink">
               {todayLabel}
             </h3>
             <div className="flex min-w-0 flex-col items-end gap-2">
