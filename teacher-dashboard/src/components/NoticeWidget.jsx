@@ -16,6 +16,7 @@ import {
   formatSlotsLabel,
   getScheduleSlots,
   normalizeWeekdays,
+  noticeTextAlign,
   runsToPlain,
   toolbarWidgetFromRuns,
   WEEKDAY_OPTIONS,
@@ -26,7 +27,7 @@ function cloneRuns(runs) {
   return (runs ?? []).map((run) => ({ ...run }))
 }
 
-function RichNoticeText({ runs, selectable, onSelectionChange, theme, textScale = 1 }) {
+function RichNoticeText({ runs, selectable, onSelectionChange, theme, textScale = 1, align = "center" }) {
   const ref = useRef(null)
 
   const captureSelection = () => {
@@ -36,12 +37,15 @@ function RichNoticeText({ runs, selectable, onSelectionChange, theme, textScale 
 
   if (!runs.length) return null
 
+  const alignClass =
+    align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
+
   return (
     <div
       ref={ref}
       onMouseUp={captureSelection}
       onKeyUp={captureSelection}
-      className={`max-w-full text-center leading-snug whitespace-pre-wrap ${
+      className={`w-full max-w-full leading-snug whitespace-pre-wrap ${alignClass} ${
         selectable ? "cursor-text select-text" : "select-none"
       }`}
     >
@@ -340,6 +344,7 @@ export function NoticeSettings({ widget, onChange }) {
     caretColor: editorInk,
     fontSize: `${Number(toolbarFallback.fontSize)}pt`,
     backgroundColor: editorBg || "var(--sunken)",
+    textAlign: noticeTextAlign(notice.textAlign),
   }
 
   return (
@@ -351,11 +356,14 @@ export function NoticeSettings({ widget, onChange }) {
               widget={{
                 ...toolbarFallback,
                 bgColor: widget.bgColor,
+                textAlign: noticeTextAlign(notice.textAlign),
               }}
               onChange={(patch) => {
                 if (patch.bgColor != null) onChange({ bgColor: patch.bgColor })
+                if (patch.textAlign != null) updateNotice({ textAlign: noticeTextAlign(patch.textAlign) })
                 const rest = { ...patch }
                 delete rest.bgColor
+                delete rest.textAlign
                 if (Object.keys(rest).length) applySettings(rest)
               }}
               compact
@@ -668,10 +676,11 @@ export default function NoticeWidget({ widget, textScale = 1 }) {
     notice.mode === "auto" && activeSchedule?.bgColor
       ? widgetBackground(activeSchedule.bgColor, theme)
       : null
+  const align = noticeTextAlign(notice.textAlign)
 
   return (
     <div
-      className="widget-scroll relative flex h-full items-center justify-center overflow-y-auto px-5"
+      className="widget-scroll relative flex h-full items-center overflow-y-auto px-5"
       style={liveBg ? { backgroundColor: liveBg } : undefined}
     >
       {hasLive ? (
@@ -680,10 +689,11 @@ export default function NoticeWidget({ widget, textScale = 1 }) {
           selectable={false}
           theme={theme}
           textScale={textScale}
+          align={align}
           onSelectionChange={() => {}}
         />
       ) : (
-        <p className="widget-empty text-[13px]">
+        <p className="widget-empty w-full text-center text-[13px]">
           {notice.mode === "manual" ? "표시할 공지가 없습니다." : "지금은 표시할 공지가 없습니다."}
         </p>
       )}

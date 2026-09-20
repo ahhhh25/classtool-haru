@@ -7,7 +7,13 @@ export function createNoticeState() {
     manualRuns: [],
     savedNotices: [],
     manualSavedId: null,
+    textAlign: "center",
   }
+}
+
+export function noticeTextAlign(value) {
+  if (value === "left" || value === "right") return value
+  return "center"
 }
 
 export function createRun(text, style = {}) {

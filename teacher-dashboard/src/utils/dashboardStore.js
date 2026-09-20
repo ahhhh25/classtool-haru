@@ -104,6 +104,7 @@ function hydrateWidget(raw) {
       manualRuns: Array.isArray(notice.manualRuns) ? notice.manualRuns : [],
       savedNotices: Array.isArray(notice.savedNotices) ? notice.savedNotices : [],
       manualSavedId: typeof notice.manualSavedId === "string" ? notice.manualSavedId : null,
+      textAlign: notice.textAlign === "left" || notice.textAlign === "right" ? notice.textAlign : "center",
     }
   }
   if (widget.type === "checkboard") {

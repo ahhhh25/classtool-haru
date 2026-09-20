@@ -1,7 +1,13 @@
-import { Bold, Underline } from "lucide-react"
+import { AlignCenter, AlignLeft, AlignRight, Bold, Underline } from "lucide-react"
 import { FONT_OPTIONS, FONT_SIZE_PRESETS } from "../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import ColorSwatches from "./ColorSwatches"
+
+const ALIGN_OPTIONS = [
+  { id: "left", label: "왼쪽 정렬", Icon: AlignLeft },
+  { id: "center", label: "가운데 정렬", Icon: AlignCenter },
+  { id: "right", label: "오른쪽 정렬", Icon: AlignRight },
+]
 
 const fieldLabel = "mb-1.5 block text-[11px] tracking-wide text-muted uppercase"
 
@@ -87,6 +93,31 @@ export default function WidgetSettings({
     </div>
   )
 
+  const alignButtons = (
+    <div className="flex gap-0.5">
+      {ALIGN_OPTIONS.map(({ id, label, Icon }) => {
+        const active = (widget.textAlign || "center") === id
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={active}
+            aria-label={label}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onChange({ textAlign: id })}
+            className={`flex ${iconButton} items-center justify-center rounded-md border transition-colors ${
+              active
+                ? "border-line-strong bg-active text-ink"
+                : "border-line text-icon hover:bg-hover"
+            }`}
+          >
+            <Icon size={iconSize} strokeWidth={1.5} />
+          </button>
+        )
+      })}
+    </div>
+  )
+
   const bgSwatches = (
     <ColorSwatches
       kind="bg"
@@ -106,6 +137,7 @@ export default function WidgetSettings({
   )
 
   const show = (name) => !fields || fields.includes(name)
+  const showAlign = fields ? fields.includes("align") : widget.textAlign != null
   const showBg = fields ? fields.includes("bg") : true
   const paletteLabel = `shrink-0 text-muted ${bare ? "text-[11px]" : "text-[12px]"}`
   const resetColors = () => {
@@ -142,7 +174,7 @@ export default function WidgetSettings({
   )
 
   if (bare) {
-    const hasChrome = show("size") || show("font") || show("style") || endSlot
+    const hasChrome = show("size") || show("font") || show("style") || showAlign || endSlot
     return (
       <div className={`no-drag ${inline ? "" : compact ? "px-4 py-2.5" : "p-4"}`}>
         <div className="flex flex-col gap-2">
@@ -151,6 +183,7 @@ export default function WidgetSettings({
               {show("size") && sizeSelect}
               {show("font") && fontSelect}
               {show("style") && styleButtons}
+              {showAlign && alignButtons}
               {endSlot}
             </div>
           )}
@@ -175,6 +208,12 @@ export default function WidgetSettings({
           <span className={fieldLabel}>글자 스타일</span>
           {styleButtons}
         </div>
+        {showAlign && (
+          <div className="shrink-0">
+            <span className={fieldLabel}>정렬</span>
+            {alignButtons}
+          </div>
+        )}
         {(show("color") || showBg) && <div className="shrink-0">{paletteRow}</div>}
       </div>
     </div>
