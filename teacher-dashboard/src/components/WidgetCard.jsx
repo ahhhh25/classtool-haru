@@ -1,5 +1,5 @@
 import { Lock, LockOpen, Maximize2, Minimize2, Plus, Settings, X } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { fontFamilyCss } from "../constants/fonts"
 import { chromeInkOnBackground, widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
@@ -54,11 +54,24 @@ export default function WidgetCard({
   const [addItemOpen, setAddItemOpen] = useState(false)
   const [lockCloseAlert, setLockCloseAlert] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  const [previewWidth, setPreviewWidth] = useState(0)
+  const bodyRef = useRef(null)
   const { theme } = useTheme()
   const kioskLink = useKioskLink()
   const checkboardLinked = widget.type === "checkboard" && isKioskLinked(kioskLink)
   const transparent = widget.type === "date" || widget.type === "clock" || widget.type === "dday"
   const noticeAuto = widget.type === "notice" && widget.notice?.mode === "auto"
+  const textScale = focused ? 2 : 1
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return undefined
+    const update = () => setPreviewWidth(el.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [widget.id, focused])
 
   useEffect(() => {
     if (!noticeAuto) return undefined
@@ -198,22 +211,23 @@ export default function WidgetCard({
           </div>
         </header>
 
-        <div className={`min-h-0 flex-1 ${transparent ? "absolute inset-0" : ""}`}>
+        <div ref={bodyRef} className={`min-h-0 flex-1 ${transparent ? "absolute inset-0" : ""}`}>
           {widget.type === "notice" ? (
-            <NoticeWidget widget={widget} textScale={focused ? 2 : 1} />
+            <NoticeWidget widget={widget} textScale={textScale} />
           ) : widget.type === "date" ? (
             <DateWidget widget={widget} />
           ) : widget.type === "clock" ? (
             <ClockWidget widget={widget} />
           ) : widget.type === "dday" ? (
-            <DdayWidget widget={widget} textScale={focused ? 2 : 1} />
+            <DdayWidget widget={widget} textScale={textScale} />
           ) : widget.type === "announcement" ? (
             <AnnouncementWidget
               widget={widget}
               onChange={onChangeSettings}
               addItemOpen={addItemOpen}
               onCloseAddItem={() => setAddItemOpen(false)}
-              textScale={focused ? 2 : 1}
+              textScale={textScale}
+              previewWidth={previewWidth}
             />
           ) : widget.type === "checkboard" ? (
             <CheckboardWidget
@@ -221,7 +235,7 @@ export default function WidgetCard({
               onChange={onChangeSettings}
               addItemOpen={addItemOpen}
               onCloseAddItem={() => setAddItemOpen(false)}
-              textScale={focused ? 2 : 1}
+              textScale={textScale}
             />
           ) : (
             <div className="flex h-full items-center justify-center px-5 text-center">
@@ -283,7 +297,12 @@ export default function WidgetCard({
           }
         >
           {widget.type === "notice" ? (
-            <NoticeSettings widget={widget} onChange={onChangeSettings} />
+            <NoticeSettings
+              widget={widget}
+              onChange={onChangeSettings}
+              previewWidth={previewWidth}
+              textScale={textScale}
+            />
           ) : widget.type === "checkboard" ? (
             <CheckboardSettings widget={widget} onChange={onChangeSettings} />
           ) : widget.type === "date" || widget.type === "clock" ? (

@@ -68,7 +68,20 @@ function RichNoticeText({ runs, selectable, onSelectionChange, theme, textScale 
   )
 }
 
-export function NoticeSettings({ widget, onChange }) {
+function PreviewFrame({ width = 0, children }) {
+  return (
+    <div className="flex justify-center">
+      <div
+        className="min-w-0"
+        style={width > 0 ? { width: `${width}px`, maxWidth: "100%" } : { width: "100%" }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale = 1 }) {
   const { theme } = useTheme()
   const notice = widget.notice
   const selectionRef = useRef(null)
@@ -336,13 +349,13 @@ export function NoticeSettings({ widget, onChange }) {
   }
 
   const editorClassName =
-    "widget-scroll h-[17rem] w-full overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-3 py-2.5 outline-none focus:border-line-strong"
+    "widget-scroll h-[17rem] w-full overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-5 py-2.5 outline-none focus:border-line-strong"
   const editorInk = contentColor(widget.textColor, theme)
   const editorBg = widgetBackground(widget.bgColor, theme)
   const editorStyle = {
     color: editorInk,
     caretColor: editorInk,
-    fontSize: `${Number(toolbarFallback.fontSize)}pt`,
+    fontSize: `${Number(toolbarFallback.fontSize) * textScale}pt`,
     backgroundColor: editorBg || "var(--sunken)",
     textAlign: noticeTextAlign(notice.textAlign),
   }
@@ -441,6 +454,7 @@ export function NoticeSettings({ widget, onChange }) {
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {notice.mode === "auto" ? (
           <div className="space-y-3">
+            <PreviewFrame width={previewWidth}>
             <RichTextEditor
               runs={draftRuns}
               fallbackStyle={{
@@ -454,6 +468,7 @@ export function NoticeSettings({ widget, onChange }) {
               ariaLabel="공지 내용"
               className={editorClassName}
               style={editorStyle}
+              textScale={textScale}
               onSelectionChange={rememberSelection}
               onChangeRuns={setDraftRuns}
               flushRef={editorFlushRef}
@@ -466,6 +481,7 @@ export function NoticeSettings({ widget, onChange }) {
                 }
               }}
             />
+            </PreviewFrame>
             <div className="flex justify-end gap-2">
               {formEditId && (
                 <button
@@ -544,6 +560,7 @@ export function NoticeSettings({ widget, onChange }) {
           </div>
         ) : (
           <div className="space-y-3">
+            <PreviewFrame width={previewWidth}>
             <RichTextEditor
               runs={manualDraftRuns}
               fallbackStyle={{
@@ -557,6 +574,7 @@ export function NoticeSettings({ widget, onChange }) {
               ariaLabel="공지 내용"
               className={editorClassName}
               style={editorStyle}
+              textScale={textScale}
               onSelectionChange={rememberSelection}
               onChangeRuns={setManualDraftRuns}
               flushRef={editorFlushRef}
@@ -569,6 +587,7 @@ export function NoticeSettings({ widget, onChange }) {
                 }
               }}
             />
+            </PreviewFrame>
             <div className="flex items-center justify-between gap-2">
               <div className="flex gap-2">
                 {savedEditId && (

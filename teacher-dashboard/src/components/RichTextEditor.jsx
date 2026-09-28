@@ -19,7 +19,7 @@ export function runStyle(run, theme, scale = 1) {
   }
 }
 
-function paintRuns(container, runs, theme) {
+function paintRuns(container, runs, theme, scale = 1) {
   container.replaceChildren()
   if (!runs.length) {
     container.appendChild(document.createElement("br"))
@@ -27,7 +27,7 @@ function paintRuns(container, runs, theme) {
   }
   for (const run of runs) {
     const span = document.createElement("span")
-    Object.assign(span.style, runStyle(run, theme))
+    Object.assign(span.style, runStyle(run, theme, scale))
     span.textContent = run.text
     container.appendChild(span)
   }
@@ -52,6 +52,7 @@ export default function RichTextEditor({
   flushRef,
   insertStyle,
   onInsertStyleConsumed,
+  textScale = 1,
 }) {
   const editorRef = useRef(null)
   const skipPaint = useRef(false)
@@ -87,11 +88,11 @@ export default function RichTextEditor({
       skipPaint.current = false
       return
     }
-    paintRuns(el, runs, theme)
+    paintRuns(el, runs, theme, textScale)
     if (selectionRef.current) {
       restoreSelection(el, selectionRef.current.start, selectionRef.current.end)
     }
-  }, [runs, theme])
+  }, [runs, theme, textScale])
 
   const captureSelection = () => {
     const el = editorRef.current

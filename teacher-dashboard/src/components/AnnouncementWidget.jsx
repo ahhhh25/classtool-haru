@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Plus, Settings, Trash2 } from "lucide-react"
 import { widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
@@ -83,12 +83,27 @@ function RichRuns({ runs, theme, className, textScale = 1 }) {
   )
 }
 
+function PreviewFrame({ width = 0, children }) {
+  return (
+    <div className="flex justify-center">
+      <div
+        className="min-w-0"
+        style={width > 0 ? { width: `${width}px`, maxWidth: "100%" } : { width: "100%" }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function AnnouncementEditorModal({
   title,
   confirmLabel,
   hint,
   draft,
   phrases = [],
+  previewWidth = 0,
+  textScale = 1,
   onChange,
   onClose,
   onConfirm,
@@ -151,6 +166,7 @@ function AnnouncementEditorModal({
         <WidgetSettings widget={toolbarWidget} onChange={applyStyle} compact bare />
       </div>
       <div className="space-y-3 px-4 py-4">
+        <PreviewFrame width={previewWidth > 80 ? previewWidth - 80 : 0}>
         <RichTextEditor
           runs={runs}
           fallbackStyle={{
@@ -159,6 +175,7 @@ function AnnouncementEditorModal({
             underline: Boolean(oneShotMarks?.underline),
           }}
           theme={theme}
+          textScale={textScale}
           ariaLabel="알림 내용"
           flushRef={editorFlushRef}
           onSelectionChange={(range) => {
@@ -168,14 +185,15 @@ function AnnouncementEditorModal({
           onChangeRuns={(nextRuns) => onChange({ runs: nextRuns })}
           insertStyle={oneShotMarks}
           onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false })}
-          className="widget-scroll h-[17rem] overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-3 py-2.5 outline-none focus:border-line-strong"
+          className="widget-scroll h-[17rem] w-full overflow-y-auto whitespace-pre-wrap rounded-md border border-line px-1 py-3 outline-none focus:border-line-strong"
           style={{
             color: contentColor(draft.textColor, theme),
             caretColor: contentColor(draft.textColor, theme),
-            fontSize: `${Number(draft.fontSize)}pt`,
+            fontSize: `${Number(draft.fontSize) * textScale}pt`,
             backgroundColor: widgetBackground(draft.bgColor, theme) || "var(--sunken)",
           }}
         />
+        </PreviewFrame>
         {hint && <p className="text-[12px] text-muted">{hint}</p>}
         <div className="flex items-center justify-between gap-2">
           <button
@@ -231,7 +249,14 @@ function AnnouncementEditorModal({
   )
 }
 
-export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCloseAddItem, textScale = 1 }) {
+export default function AnnouncementWidget({
+  widget,
+  onChange,
+  addItemOpen,
+  onCloseAddItem,
+  textScale = 1,
+  previewWidth = 0,
+}) {
   const { theme } = useTheme()
   const board = widget.announcement ?? { items: [], phrases: [] }
   const phrases = Array.isArray(board.phrases) ? board.phrases : []
@@ -419,6 +444,8 @@ export default function AnnouncementWidget({ widget, onChange, addItemOpen, onCl
           }
           draft={editor.item}
           phrases={phrases}
+          previewWidth={previewWidth}
+          textScale={textScale}
           theme={theme}
           onChange={(patch) => {
             const item = { ...editor.item, ...patch }

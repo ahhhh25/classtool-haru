@@ -567,12 +567,12 @@ export default function NoticeBookTool() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col p-6">
+          <div className="flex min-h-0 flex-1 justify-center overflow-hidden p-6">
             <div
               ref={editorRef}
               contentEditable
               suppressContentEditableWarning
-              className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-sunken p-6 text-ink outline-none"
+              className="min-h-0 w-full max-w-5xl flex-1 overflow-y-auto rounded-xl border border-line bg-sunken p-6 text-ink outline-none"
               onInput={() => {
                 consumeOneShot()
                 scheduleSave()
