@@ -39,7 +39,7 @@ function emptyNotice() {
     title: todayNoticeTitle(),
     content: "",
     fontFamily: DEFAULT_FONT.id,
-    fontSize: 36,
+    fontSize: 50,
     lineHeight: "normal",
     textColor: DEFAULT_TEXT_COLOR,
     bold: false,
@@ -57,7 +57,7 @@ function hydrateNotice(raw) {
     ...raw,
     id: String(raw.id || `notice-${Date.now()}`),
     fontFamily: resolveFontId(raw.fontFamily),
-    fontSize: parseStoredSize(raw.fontSize, 36),
+    fontSize: parseStoredSize(raw.fontSize, 50),
     textColor: raw.textColor || raw.color || DEFAULT_TEXT_COLOR,
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
@@ -260,6 +260,22 @@ export default function NoticeBookTool() {
     }
   }, [theme, activeNotice?.id])
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const editor = editorRef.current
+      if (!editor) return
+      const sel = window.getSelection()
+      if (!sel?.rangeCount) return
+      const range = sel.getRangeAt(0)
+      if (range.collapsed) return
+      if (editor.contains(range.commonAncestorContainer) || range.commonAncestorContainer === editor) {
+        savedRange.current = range.cloneRange()
+      }
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
+    return () => document.removeEventListener("selectionchange", onSelectionChange)
+  }, [])
+
   const scheduleSave = () => {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(saveFromEditor, 600)
@@ -291,6 +307,7 @@ export default function NoticeBookTool() {
 
   const patchStyle = (patch) => {
     const editor = editorRef.current
+    rememberSelection()
     const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
       lineHeight: activeNotice?.lineHeight,
     })
@@ -479,7 +496,7 @@ export default function NoticeBookTool() {
               inline
               widget={{
                 fontFamily: activeNotice?.fontFamily ?? DEFAULT_FONT.id,
-                fontSize: activeNotice?.fontSize ?? 36,
+                fontSize: activeNotice?.fontSize ?? 50,
                 bold: oneShotMarks.bold,
                 underline: oneShotMarks.underline,
                 textColor: activeNotice?.textColor ?? DEFAULT_TEXT_COLOR,

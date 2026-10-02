@@ -23,7 +23,7 @@ export function shuffleArray(arr) {
   return copy
 }
 
-export function computeAutomaticGroups(students, totalGroups, useGenderBalance) {
+function assignAutomaticGroups(students, totalGroups, useGenderBalance) {
   const groups = Array.from({ length: totalGroups }, () => [])
   if (useGenderBalance) {
     const boys = shuffleArray(students.filter((st) => st.gender === "M"))
@@ -40,6 +40,47 @@ export function computeAutomaticGroups(students, totalGroups, useGenderBalance) 
     })
   }
   return groups
+}
+
+export function normalizeSepGroups(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((group) => Array.isArray(group))
+    .map((group) => [...new Set(group.map((id) => String(id || "")).filter(Boolean))])
+}
+
+export function groupsViolateSep(groups, sepGroups) {
+  const constraints = normalizeSepGroups(sepGroups).filter((group) => group.length >= 2)
+  if (!constraints.length) return false
+  const groupIndex = new Map()
+  groups.forEach((members, index) => {
+    members.forEach((student) => {
+      if (student?.id) groupIndex.set(String(student.id), index)
+    })
+  })
+  return constraints.some((group) => {
+    const seen = new Set()
+    for (const id of group) {
+      if (!groupIndex.has(id)) continue
+      const index = groupIndex.get(id)
+      if (seen.has(index)) return true
+      seen.add(index)
+    }
+    return false
+  })
+}
+
+export function computeAutomaticGroups(students, totalGroups, useGenderBalance, sepGroups = []) {
+  const roster = Array.isArray(students) ? students : []
+  const count = Math.max(1, Number(totalGroups) || 1)
+  const constraints = normalizeSepGroups(sepGroups).filter((group) => group.length >= 2)
+  const maxTries = constraints.length ? 800 : 1
+  let last = assignAutomaticGroups(roster, count, useGenderBalance)
+  for (let attempt = 0; attempt < maxTries; attempt += 1) {
+    last = assignAutomaticGroups(roster, count, useGenderBalance)
+    if (!groupsViolateSep(last, constraints)) return last
+  }
+  return last
 }
 
 export function genderLabel(gender) {

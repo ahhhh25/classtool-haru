@@ -291,6 +291,7 @@ export default function ColorSwatches({ kind, value, onChange, compact = false }
             aria-label={preset.label}
             aria-pressed={preset.selected}
             onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={(event) => event.preventDefault()}
             onClick={preset.onPick}
             className={swatchClass(preset.selected, compact)}
             style={preset.style}
@@ -304,6 +305,7 @@ export default function ColorSwatches({ kind, value, onChange, compact = false }
           aria-expanded={open}
           aria-pressed={customSelected}
           onMouseDown={(event) => event.preventDefault()}
+          onPointerDown={(event) => event.preventDefault()}
           onClick={() => setOpen((current) => !current)}
           className={swatchClass(customSelected, compact)}
           style={{
@@ -321,6 +323,7 @@ export default function ColorSwatches({ kind, value, onChange, compact = false }
               aria-label={`최근 색상 ${hex}`}
               aria-pressed={matchesRecent(hex)}
               onMouseDown={(event) => event.preventDefault()}
+              onPointerDown={(event) => event.preventDefault()}
               onClick={() => pickRecent(hex)}
               className={swatchClass(matchesRecent(hex), compact)}
               style={{ backgroundColor: hex }}

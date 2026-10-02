@@ -55,6 +55,7 @@ export default function WidgetCard({
   const [lockCloseAlert, setLockCloseAlert] = useState(false)
   const [now, setNow] = useState(() => new Date())
   const [previewWidth, setPreviewWidth] = useState(0)
+  const cardRef = useRef(null)
   const bodyRef = useRef(null)
   const { theme } = useTheme()
   const kioskLink = useKioskLink()
@@ -64,9 +65,9 @@ export default function WidgetCard({
   const textScale = focused ? 2 : 1
 
   useLayoutEffect(() => {
-    const el = bodyRef.current
+    const el = cardRef.current || bodyRef.current
     if (!el) return undefined
-    const update = () => setPreviewWidth(el.clientWidth)
+    const update = () => setPreviewWidth(Math.round(el.getBoundingClientRect().width))
     update()
     const observer = new ResizeObserver(update)
     observer.observe(el)
@@ -101,6 +102,7 @@ export default function WidgetCard({
   return (
     <>
       <article
+        ref={cardRef}
         className={`group/chrome flex h-full flex-col overflow-hidden ${
           transparent
             ? `relative ${customBg ? "rounded-xl" : "bg-transparent"} ${
@@ -264,6 +266,7 @@ export default function WidgetCard({
           fit={widget.type === "date" || widget.type === "clock" || widget.type === "dday"}
           tall={checkboardLinked || widget.type === "notice"}
           overflowVisible={widget.type === "notice"}
+          contentWidth={widget.type === "notice" ? previewWidth : 0}
           headerExtra={
             widget.type === "notice" ? (
               <div className="flex min-w-0 items-center gap-2">

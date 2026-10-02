@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { X } from "lucide-react"
+import { Settings, X } from "lucide-react"
 import { useSharedStudents } from "../../hooks/useSharedStudents"
 import { loadJson, saveJson } from "../../utils/safeStorage"
 import {
@@ -8,6 +8,7 @@ import {
   clampGroupCount,
   bestGroupGrid,
   computeAutomaticGroups,
+  normalizeSepGroups,
   shuffleArray,
 } from "../../utils/pickerUtils"
 import ConfettiBurst from "./ConfettiBurst"
@@ -27,6 +28,14 @@ function loadGroupPrefs() {
 function saveGroupPrefs(patch) {
   const current = loadJson(PICKER_PREFS_KEY, {}) || {}
   saveJson(PICKER_PREFS_KEY, { ...current, ...patch })
+}
+
+function loadSepGroups() {
+  const stored = loadJson(PICKER_PREFS_KEY, {}) || {}
+  if (!Array.isArray(stored.sepGroups)) return []
+  return stored.sepGroups
+    .filter((group) => Array.isArray(group))
+    .map((group) => [...new Set(group.map((id) => String(id || "")).filter(Boolean))])
 }
 
 const GROUP_COUNTS = [2, 3, 4, 5, 6, 7, 8]
@@ -333,6 +342,8 @@ function GroupPick({ students, mode }) {
   const [orderShuffling, setOrderShuffling] = useState(false)
   const [makeTotal, setMakeTotal] = useState(prefs.make)
   const [balance, setBalance] = useState(true)
+  const [sepGroups, setSepGroups] = useState(() => loadSepGroups())
+  const [sepOpen, setSepOpen] = useState(false)
   const [groups, setGroups] = useState(null)
   const [shuffling, setShuffling] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
@@ -348,6 +359,18 @@ function GroupPick({ students, mode }) {
   orderBusyRef.current = orderShuffling
   makeBusyRef.current = shuffling
   totalRef.current = total
+
+  useEffect(() => {
+    const ids = new Set(students.map((student) => String(student.id)))
+    setSepGroups((current) => {
+      const next = current.map((group) => group.filter((id) => ids.has(id)))
+      if (next.length === current.length && next.every((group, index) => group.length === current[index].length)) {
+        return current
+      }
+      saveGroupPrefs({ sepGroups: next })
+      return next
+    })
+  }, [students])
 
   useEffect(() => {
     audioRef.current = createPickerAudio()
@@ -524,7 +547,7 @@ function GroupPick({ students, mode }) {
 
   const runMake = () => {
     if (students.length === 0 || students.length < makeTotal || shuffling) return
-    const finalGroups = computeAutomaticGroups(students, makeTotal, balance)
+    const finalGroups = computeAutomaticGroups(students, makeTotal, balance, sepGroups)
     syncSend(SYNC.PICKER_DRAW_START, { kind: "create", groups: finalGroups, makeTotal, balance })
     playMake(finalGroups)
   }
@@ -672,8 +695,16 @@ function GroupPick({ students, mode }) {
       )}
 
       {mode === "create" && (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-sunken p-4">
+        <div className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+          <button
+            type="button"
+            aria-label="설정"
+            onClick={() => setSepOpen(true)}
+            className="absolute top-1.5 right-1.5 z-10 flex size-5 items-center justify-center rounded text-faint opacity-25 transition-opacity hover:opacity-60"
+          >
+            <Settings size={11} strokeWidth={1.25} />
+          </button>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-sunken p-4 pr-8">
             <label className="flex items-center gap-2 text-[13px] text-ink">
               구성할 모둠 수
               <select
@@ -748,6 +779,19 @@ function GroupPick({ students, mode }) {
                   setFullscreen(false)
                   syncSend(SYNC.PICKER_CONFIG, { kind: "create", fullscreen: false })
                 }}
+              />,
+              document.body,
+            )}
+          {sepOpen &&
+            createPortal(
+              <SepSettingsModal
+                students={students}
+                sepGroups={sepGroups}
+                onChange={(next) => {
+                  setSepGroups(next)
+                  saveGroupPrefs({ sepGroups: next })
+                }}
+                onClose={() => setSepOpen(false)}
               />,
               document.body,
             )}
@@ -931,6 +975,146 @@ function GroupMakeFullscreen({ groups, onClose }) {
           <GroupFitCard key={idx} index={idx} members={members} />
         ))}
       </div>
+    </div>
+  )
+}
+
+function SepSettingsModal({ students, sepGroups, onChange, onClose }) {
+  const [pickIndex, setPickIndex] = useState(null)
+  const activeCount = normalizeSepGroups(sepGroups).filter((group) => group.length >= 2).length
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        if (pickIndex != null) setPickIndex(null)
+        else onClose()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose, pickIndex])
+
+  const patchGroup = (index, nextGroup) => {
+    onChange(sepGroups.map((group, i) => (i === index ? nextGroup : group)))
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+      <button type="button" className="absolute inset-0 bg-overlay" aria-label="닫기" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="theme-surface relative z-10 flex max-h-[min(80vh,640px)] w-[min(420px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-line bg-widget shadow-modal"
+      >
+        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4">
+          <h3 className="text-[14px] text-ink">설정</h3>
+          <div className="min-w-0 flex-1" />
+          <button
+            type="button"
+            className="flex size-8 items-center justify-center rounded-md text-icon hover:bg-hover hover:text-ink"
+            aria-label="닫기"
+            onClick={onClose}
+          >
+            <X size={16} strokeWidth={1.5} />
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <p className="mb-3 text-[12px] text-muted">
+            같은 모둠이 되지 않게 할 학생을 묶어 두세요.
+            {activeCount > 0 ? ` · ${activeCount}개 적용 중` : ""}
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange([...sepGroups, []])}
+            className="mb-2 rounded-md border border-line px-2 py-1 text-[12px] text-icon hover:bg-hover hover:text-ink"
+          >
+            + 그룹 추가
+          </button>
+          <div className="space-y-2">
+            {sepGroups.length === 0 && (
+              <p className="text-[12px] text-faint">등록된 그룹이 없습니다.</p>
+            )}
+            {sepGroups.map((group, index) => {
+              const names = group
+                .map((id) => students.find((student) => student.id === id)?.name || "?")
+                .join(", ")
+              return (
+                <div key={`sep-${index}`} className="rounded-md border border-line bg-sunken p-2 text-[12px]">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="font-medium text-ink">그룹 {index + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => onChange(sepGroups.filter((_, i) => i !== index))}
+                      className="text-faint hover:text-ink"
+                      aria-label="그룹 삭제"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <p className="mb-1 text-muted">{names || "(비어있음)"}</p>
+                  <button
+                    type="button"
+                    className="text-[12px] text-accent-fg hover:underline"
+                    onClick={() => setPickIndex(index)}
+                  >
+                    학생 선택
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+      {pickIndex != null && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-6">
+          <button
+            type="button"
+            className="absolute inset-0 bg-overlay"
+            aria-label="닫기"
+            onClick={() => setPickIndex(null)}
+          />
+          <div className="theme-surface relative z-10 flex max-h-[min(80vh,640px)] w-[min(360px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-line bg-widget shadow-modal">
+            <header className="flex h-11 shrink-0 items-center border-b border-line px-4">
+              <h4 className="text-[14px] text-ink">그룹 {pickIndex + 1} 학생 선택</h4>
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+              {students.map((student) => {
+                const checked = sepGroups[pickIndex]?.includes(student.id)
+                return (
+                  <label
+                    key={student.id}
+                    className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px] text-ink"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(checked)}
+                      onChange={(event) => {
+                        const current = sepGroups[pickIndex] || []
+                        patchGroup(
+                          pickIndex,
+                          event.target.checked
+                            ? [...current, student.id]
+                            : current.filter((id) => id !== student.id),
+                        )
+                      }}
+                    />
+                    {student.name}
+                  </label>
+                )
+              })}
+            </div>
+            <div className="border-t border-line p-3">
+              <button
+                type="button"
+                className="h-9 w-full rounded-lg border border-line text-[13px] text-ink hover:bg-hover"
+                onClick={() => setPickIndex(null)}
+              >
+                완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -85,22 +85,38 @@ export function applyBaseEditorStyle(editor, style, theme, { lined = false } = {
   }
 }
 
+function isRangeInEditor(editor, range) {
+  if (!editor || !range) return false
+  try {
+    if (range.collapsed) return false
+    const root = range.commonAncestorContainer
+    if (!editor.contains(root) && root !== editor) return false
+    return document.contains(root) || root === editor
+  } catch {
+    return false
+  }
+}
+
+function liveEditorRange(editor) {
+  const sel = window.getSelection()
+  if (!sel?.rangeCount) return null
+  const range = sel.getRangeAt(0)
+  return isRangeInEditor(editor, range) ? range : null
+}
+
 function restoreRange(editor, savedRange) {
   if (!editor || !savedRange) return null
   try {
+    if (savedRange.collapsed) return null
+    const root = savedRange.commonAncestorContainer
+    if (!editor.contains(root) && root !== editor) return null
     const sel = window.getSelection()
     sel.removeAllRanges()
     sel.addRange(savedRange)
   } catch {
     return null
   }
-  const sel = window.getSelection()
-  if (!sel?.rangeCount) return null
-  const range = sel.getRangeAt(0)
-  if (range.collapsed) return null
-  const root = range.commonAncestorContainer
-  if (!editor.contains(root) && root !== editor) return null
-  return range
+  return liveEditorRange(editor)
 }
 
 function wrapTextInRange(range, applyStyle) {
@@ -148,7 +164,7 @@ function applyStyleToSelection(range, applyStyle) {
 
 export function applyEditorPatch(editor, patch, theme, savedRange, { lined = false, lineHeight } = {}) {
   if (!editor) return false
-  const range = restoreRange(editor, savedRange)
+  const range = liveEditorRange(editor) || restoreRange(editor, savedRange)
   const hasSelection = Boolean(range)
 
   if (patch.fontSize != null) {

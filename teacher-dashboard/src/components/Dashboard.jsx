@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import ReactGridLayout, { useContainerWidth } from "react-grid-layout"
-import { noOverlapCompactor } from "react-grid-layout/core"
+import { verticalCompactor } from "react-grid-layout/core"
 import WidgetCard from "./WidgetCard"
 import { WIDGET_PRESETS } from "../utils/widgets"
 
@@ -69,7 +69,7 @@ export default function Dashboard({
               enabled: true,
               handles: ["se", "sw", "ne", "nw"],
             }}
-            compactor={noOverlapCompactor}
+            compactor={verticalCompactor}
           >
             {widgets.map((widget) => (
               <div

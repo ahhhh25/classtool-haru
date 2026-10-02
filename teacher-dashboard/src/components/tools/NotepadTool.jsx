@@ -281,6 +281,22 @@ export default function NotepadTool({ active = true }) {
     return () => document.removeEventListener("pointerdown", onPointerDown)
   }, [canvas.shapePanelOpen, canvas.closeShapePanel])
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const editor = editorRef.current
+      if (!editor) return
+      const sel = window.getSelection()
+      if (!sel?.rangeCount) return
+      const range = sel.getRangeAt(0)
+      if (range.collapsed) return
+      if (editor.contains(range.commonAncestorContainer) || range.commonAncestorContainer === editor) {
+        savedRange.current = range.cloneRange()
+      }
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
+    return () => document.removeEventListener("selectionchange", onSelectionChange)
+  }, [])
+
   const scheduleSave = () => {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => saveFromEditor(), 600)
@@ -312,6 +328,7 @@ export default function NotepadTool({ active = true }) {
 
   const patchStyle = (patch) => {
     const editor = editorRef.current
+    rememberSelection()
     const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
       lined: activeNote?.bgMode === "lined",
       lineHeight: activeNote?.lineHeight,

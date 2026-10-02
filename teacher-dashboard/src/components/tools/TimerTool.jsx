@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Maximize2, Minimize2, Pause, Play, RotateCcw, Timer, Watch } from "lucide-react"
 import { loadJson, saveJson } from "../../utils/safeStorage"
@@ -47,6 +47,41 @@ function formatClock(ms, mode = "timer") {
   const seconds = total % 60
   if (hours > 0) return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
   return `${pad(minutes)}:${pad(seconds)}`
+}
+
+function FitClock({ text, className, pulseKey }) {
+  const wrapRef = useRef(null)
+  const textRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current
+    const el = textRef.current
+    if (!wrap || !el) return undefined
+
+    const fit = () => {
+      const width = wrap.clientWidth
+      const height = wrap.clientHeight
+      if (width < 16 || height < 16) return
+      el.style.fontSize = "240px"
+      const rect = el.getBoundingClientRect()
+      if (rect.width < 1 || rect.height < 1) return
+      const scale = Math.min(width / rect.width, height / rect.height) * 0.97
+      el.style.fontSize = `${Math.max(32, 240 * scale)}px`
+    }
+
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(wrap)
+    return () => observer.disconnect()
+  }, [text, pulseKey])
+
+  return (
+    <div ref={wrapRef} className="timer-clock-wrap">
+      <p key={pulseKey} ref={textRef} className={className}>
+        {text}
+      </p>
+    </div>
+  )
 }
 
 function loadWarnPrefs() {
@@ -484,20 +519,17 @@ export default function TimerTool() {
         </button>
       </div>
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-        <div className="timer-clock-wrap">
-          <p
-            key={lastTen ? pulseSecond : "clock"}
-            className={`timer-clock font-semibold tabular-nums text-ink ${
-              lastTen ? "text-accent timer-clock-pulse" : ""
-            } ${lastThree ? "is-final" : ""}`}
-          >
-            {formatClock(displayMs, mode)}
-          </p>
-        </div>
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center px-3">
+        <FitClock
+          text={formatClock(displayMs, mode)}
+          pulseKey={lastTen ? pulseSecond : "clock"}
+          className={`timer-clock font-semibold tabular-nums text-ink ${
+            lastTen ? "text-accent timer-clock-pulse" : ""
+          } ${lastThree ? "is-final" : ""}`}
+        />
 
         {mode === "timer" && (
-          <div className="mt-8 w-full max-w-5xl">
+          <div className="mt-3 mb-1 w-full max-w-5xl shrink-0">
             <div className="timer-progress-track h-3.5 w-full overflow-hidden rounded-full">
               <div
                 className={`timer-progress-fill h-full w-full rounded-full ${lastThree ? "is-final" : ""}`}

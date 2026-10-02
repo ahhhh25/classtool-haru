@@ -161,12 +161,12 @@ function AnnouncementEditorModal({
   }
 
   return (
-    <SettingsModal title={title} onClose={onClose} fit>
+    <SettingsModal title={title} onClose={onClose} fit contentWidth={previewWidth}>
       <div className="shrink-0 border-b border-line">
         <WidgetSettings widget={toolbarWidget} onChange={applyStyle} compact bare />
       </div>
       <div className="space-y-3 px-4 py-4">
-        <PreviewFrame width={previewWidth > 80 ? previewWidth - 80 : 0}>
+        <PreviewFrame width={previewWidth}>
         <RichTextEditor
           runs={runs}
           fallbackStyle={{
