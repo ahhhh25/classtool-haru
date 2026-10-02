@@ -27,6 +27,7 @@ export function ThemeProvider({ children }) {
     applyThemeClass(initial)
     return initial
   })
+
   useEffect(() => {
     applyThemeClass(theme)
     try {
