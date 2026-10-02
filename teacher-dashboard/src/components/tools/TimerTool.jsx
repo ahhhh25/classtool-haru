@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Maximize2, Minimize2, Pause, Play, RotateCcw, Timer, Watch } from "lucide-react"
 import { loadJson, saveJson } from "../../utils/safeStorage"
@@ -49,41 +49,6 @@ function formatClock(ms, mode = "timer") {
   return `${pad(minutes)}:${pad(seconds)}`
 }
 
-function FitClock({ text, className, pulseKey }) {
-  const wrapRef = useRef(null)
-  const textRef = useRef(null)
-
-  useLayoutEffect(() => {
-    const wrap = wrapRef.current
-    const el = textRef.current
-    if (!wrap || !el) return undefined
-
-    const fit = () => {
-      const width = wrap.clientWidth
-      const height = wrap.clientHeight
-      if (width < 16 || height < 16) return
-      el.style.fontSize = "240px"
-      const rect = el.getBoundingClientRect()
-      if (rect.width < 1 || rect.height < 1) return
-      const scale = Math.min(width / rect.width, height / rect.height) * 0.97
-      el.style.fontSize = `${Math.max(32, 240 * scale)}px`
-    }
-
-    fit()
-    const observer = new ResizeObserver(fit)
-    observer.observe(wrap)
-    return () => observer.disconnect()
-  }, [text, pulseKey])
-
-  return (
-    <div ref={wrapRef} className="timer-clock-wrap">
-      <p key={pulseKey} ref={textRef} className={className}>
-        {text}
-      </p>
-    </div>
-  )
-}
-
 function loadWarnPrefs() {
   const stored = loadJson(TIMER_PREFS_KEY, {}) || {}
   const value = Number(stored.warnSeconds)
@@ -120,6 +85,8 @@ export default function TimerTool() {
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, remainingMs / durationMs)) : 0
   const lastTen = mode === "timer" && running && !paused && remainingMs > 0 && remainingMs <= 10000
   const lastThree = lastTen && remainingMs <= 3000
+  const barAlert = mode === "timer" && remainingMs > 0 && remainingMs <= 60000
+  const barCritical = mode === "timer" && remainingMs > 0 && remainingMs <= 10000
   const pulseSecond = lastTen ? Math.ceil(remainingMs / 1000) : 0
   const vignette = lastTen ? 1 - remainingMs / 10000 : 0
   const warnMs = warnEnabled ? Math.max(0, Number(warnSeconds) || 0) * 1000 : 0
@@ -519,25 +486,31 @@ export default function TimerTool() {
         </button>
       </div>
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center px-3">
-        <FitClock
-          text={formatClock(displayMs, mode)}
-          pulseKey={lastTen ? pulseSecond : "clock"}
-          className={`timer-clock font-semibold tabular-nums text-ink ${
-            lastTen ? "text-accent timer-clock-pulse" : ""
-          } ${lastThree ? "is-final" : ""}`}
-        />
-
-        {mode === "timer" && (
-          <div className="mt-3 mb-1 w-full max-w-5xl shrink-0">
-            <div className="timer-progress-track h-3.5 w-full overflow-hidden rounded-full">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
+        <div className="timer-face">
+          <p
+            key={lastTen ? pulseSecond : "clock"}
+            className={`timer-clock font-semibold tabular-nums text-ink ${
+              lastTen ? "text-accent timer-clock-pulse" : ""
+            } ${lastThree ? "is-final" : ""}`}
+          >
+            {formatClock(displayMs, mode)}
+          </p>
+          {mode === "timer" && (
+            <div className="timer-progress-slot">
               <div
-                className={`timer-progress-fill h-full w-full rounded-full ${lastThree ? "is-final" : ""}`}
-                style={{ transform: `scaleX(${progress})` }}
-              />
+                className={`timer-progress-track ${
+                  barCritical ? "is-critical" : barAlert ? "is-alert" : ""
+                }`}
+              >
+                <div
+                  className="timer-progress-fill"
+                  style={{ transform: `scaleX(${progress})` }}
+                />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="relative z-10 flex shrink-0 flex-col items-center gap-4 px-5 pb-7">
