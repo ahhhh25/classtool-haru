@@ -623,21 +623,23 @@ export default function TimerTool() {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
         <div className="timer-stage">
           {captionText ? (
-            <p
-              className={`timer-caption ${captionBg ? "has-bg" : ""}`}
-              style={{
-                fontFamily: fontFamilyCss(caption.fontFamily),
-                fontSize: `${Number(caption.fontSize)}pt`,
-                fontWeight: caption.bold ? 700 : 400,
-                color: contentColor(caption.textColor, theme),
-                textDecoration: caption.underline ? "underline" : "none",
-                textUnderlineOffset: caption.underline ? "0.16em" : undefined,
-                textAlign: caption.textAlign || "center",
-                backgroundColor: captionBg || undefined,
-              }}
-            >
-              {caption.text}
-            </p>
+            <div className="timer-caption-slot">
+              <p
+                className={`timer-caption ${captionBg ? "has-bg" : ""}`}
+                style={{
+                  fontFamily: fontFamilyCss(caption.fontFamily),
+                  fontSize: `${Number(caption.fontSize)}pt`,
+                  fontWeight: caption.bold ? 700 : 400,
+                  color: contentColor(caption.textColor, theme),
+                  textDecoration: caption.underline ? "underline" : "none",
+                  textUnderlineOffset: caption.underline ? "0.16em" : undefined,
+                  textAlign: caption.textAlign || "center",
+                  backgroundColor: captionBg || undefined,
+                }}
+              >
+                {caption.text}
+              </p>
+            </div>
           ) : null}
           <div className="timer-face">
             <p

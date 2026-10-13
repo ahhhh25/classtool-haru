@@ -480,16 +480,31 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .timer-stage {
+  position: relative;
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  max-width: 100%;
+}
+
+.timer-caption-slot {
+  position: absolute;
+  top: 25%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 1rem;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .timer-caption {
   max-width: min(92vw, 56rem);
-  margin-bottom: clamp(0.7rem, 1.4vw, 1.15rem);
   line-height: 1.25;
   white-space: pre-wrap;
   word-break: keep-all;
