@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Maximize2, Minimize2, Pause, Play, RotateCcw, Timer, Watch } from "lucide-react"
+import { DEFAULT_FONT, fontFamilyCss } from "../../constants/fonts"
+import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR, widgetBackground } from "../../constants/palette"
+import { contentColor } from "../../theme/displayColor"
+import { useTheme } from "../../theme/ThemeProvider"
 import { loadJson, saveJson } from "../../utils/safeStorage"
+import { parseStoredSize, resolveFontId } from "../../utils/editorStyle"
 import { createTimerAudio } from "../../utils/timerAudio"
 import { SFX_VOLUME_STEPS, clampSfxVolume, loadSfxVolume, TIMER_PREFS_KEY } from "../../utils/sfxVolume"
-import { subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
+import { isHaruReceiver, subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
+import WidgetSettings from "../WidgetSettings"
 import ConfettiBurst from "./ConfettiBurst"
 
 const PRESETS = [
@@ -58,7 +64,55 @@ function loadWarnPrefs() {
   }
 }
 
+function emptyCaption() {
+  return {
+    text: "",
+    fontFamily: DEFAULT_FONT.id,
+    fontSize: 28,
+    textColor: DEFAULT_TEXT_COLOR,
+    bold: true,
+    underline: false,
+    textAlign: "center",
+    bgColor: DEFAULT_BG_COLOR,
+  }
+}
+
+function loadCaptionPrefs() {
+  const stored = loadJson(TIMER_PREFS_KEY, {}) || {}
+  const raw = stored.caption && typeof stored.caption === "object" ? stored.caption : {}
+  const align = raw.textAlign === "left" || raw.textAlign === "right" ? raw.textAlign : "center"
+  return {
+    ...emptyCaption(),
+    text: typeof raw.text === "string" ? raw.text : "",
+    fontFamily: resolveFontId(raw.fontFamily),
+    fontSize: parseStoredSize(raw.fontSize, 28),
+    textColor: raw.textColor || DEFAULT_TEXT_COLOR,
+    bold: raw.bold !== false,
+    underline: Boolean(raw.underline),
+    textAlign: align,
+    bgColor: raw.bgColor || DEFAULT_BG_COLOR,
+  }
+}
+
+function hydrateCaption(raw) {
+  if (!raw || typeof raw !== "object") return null
+  const align = raw.textAlign === "left" || raw.textAlign === "right" ? raw.textAlign : "center"
+  return {
+    ...emptyCaption(),
+    text: typeof raw.text === "string" ? raw.text : "",
+    fontFamily: resolveFontId(raw.fontFamily),
+    fontSize: parseStoredSize(raw.fontSize, 28),
+    textColor: raw.textColor || DEFAULT_TEXT_COLOR,
+    bold: raw.bold !== false,
+    underline: Boolean(raw.underline),
+    textAlign: align,
+    bgColor: raw.bgColor || DEFAULT_BG_COLOR,
+  }
+}
+
 export default function TimerTool() {
+  const { theme } = useTheme()
+  const isReceiver = isHaruReceiver()
   const [mode, setMode] = useState("timer")
   const [durationMs, setDurationMs] = useState(0)
   const [remainingMs, setRemainingMs] = useState(0)
@@ -68,6 +122,7 @@ export default function TimerTool() {
   const [warnEnabled, setWarnEnabled] = useState(() => loadWarnPrefs().enabled)
   const [warnSeconds, setWarnSeconds] = useState(() => loadWarnPrefs().seconds)
   const [sfxVolume, setSfxVolume] = useState(() => loadSfxVolume())
+  const [caption, setCaption] = useState(() => loadCaptionPrefs())
   const [immersive, setImmersive] = useState(false)
   const [burstId, setBurstId] = useState(0)
   const [finished, setFinished] = useState(false)
@@ -94,6 +149,8 @@ export default function TimerTool() {
   const totalSeconds = Math.max(0, Math.floor((mode === "timer" ? remainingMs : durationMs) / 1000))
   const minutesValue = Math.floor(totalSeconds / 60)
   const secondsValue = totalSeconds % 60
+  const captionText = caption.text.replace(/^\s+|\s+$/g, "")
+  const captionBg = widgetBackground(caption.bgColor, theme)
 
   useEffect(() => {
     audioRef.current = createTimerAudio()
@@ -105,9 +162,16 @@ export default function TimerTool() {
   }, [])
 
   useEffect(() => {
-    saveJson(TIMER_PREFS_KEY, { warnEnabled, warnSeconds, sfxVolume })
+    const stored = loadJson(TIMER_PREFS_KEY, {}) || {}
+    saveJson(TIMER_PREFS_KEY, {
+      ...stored,
+      warnEnabled,
+      warnSeconds,
+      sfxVolume,
+      caption,
+    })
     audioRef.current?.setVolume(sfxVolume)
-  }, [warnEnabled, warnSeconds, sfxVolume])
+  }, [warnEnabled, warnSeconds, sfxVolume, caption])
 
   const stopTension = () => {
     tensionOnRef.current = false
@@ -286,6 +350,11 @@ export default function TimerTool() {
         audioRef.current?.stopTension()
         return
       }
+      if (msg.type === SYNC.TIMER_CAPTION) {
+        const next = hydrateCaption(payload)
+        if (next) setCaption(next)
+        return
+      }
       if (msg.type === SYNC.TIMER_RESET) {
         cancelAnimationFrame(frameRef.current)
         tensionOnRef.current = false
@@ -437,6 +506,14 @@ export default function TimerTool() {
     syncSend(SYNC.TIMER_RESET, { mode, durationMs })
   }
 
+  const patchCaption = (patch) => {
+    setCaption((current) => {
+      const next = { ...current, ...patch }
+      syncSend(SYNC.TIMER_CAPTION, next)
+      return next
+    })
+  }
+
   const shell = (
     <div
       ref={rootRef}
@@ -487,33 +564,64 @@ export default function TimerTool() {
       </div>
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-        <div className="timer-face">
-          <p
-            key={lastTen ? pulseSecond : "clock"}
-            className={`timer-clock font-semibold tabular-nums text-ink ${
-              lastTen ? "text-accent timer-clock-pulse" : ""
-            } ${lastThree ? "is-final" : ""}`}
-          >
-            {formatClock(displayMs, mode)}
-          </p>
-          {mode === "timer" && (
-            <div className="timer-progress-slot">
-              <div
-                className={`timer-progress-track ${
-                  barCritical ? "is-critical" : barAlert ? "is-alert" : ""
-                }`}
-              >
+        <div className="timer-stage">
+          {captionText ? (
+            <p
+              className={`timer-caption ${captionBg ? "has-bg" : ""}`}
+              style={{
+                fontFamily: fontFamilyCss(caption.fontFamily),
+                fontSize: `${Number(caption.fontSize)}pt`,
+                fontWeight: caption.bold ? 700 : 400,
+                color: contentColor(caption.textColor, theme),
+                textDecoration: caption.underline ? "underline" : "none",
+                textUnderlineOffset: caption.underline ? "0.16em" : undefined,
+                textAlign: caption.textAlign || "center",
+                backgroundColor: captionBg || undefined,
+              }}
+            >
+              {caption.text}
+            </p>
+          ) : null}
+          <div className="timer-face">
+            <p
+              key={lastTen ? pulseSecond : "clock"}
+              className={`timer-clock font-semibold tabular-nums text-ink ${
+                lastTen ? "text-accent timer-clock-pulse" : ""
+              } ${lastThree ? "is-final" : ""}`}
+            >
+              {formatClock(displayMs, mode)}
+            </p>
+            {mode === "timer" && (
+              <div className="timer-progress-slot">
                 <div
-                  className="timer-progress-fill"
-                  style={{ transform: `scaleX(${progress})` }}
-                />
+                  className={`timer-progress-track ${
+                    barCritical ? "is-critical" : barAlert ? "is-alert" : ""
+                  }`}
+                >
+                  <div
+                    className="timer-progress-fill"
+                    style={{ transform: `scaleX(${progress})` }}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       <div className="relative z-10 flex shrink-0 flex-col items-center gap-4 px-5 pb-7">
+        {!immersive && !isReceiver && (
+          <div className="w-full max-w-5xl overflow-x-auto rounded-xl border border-line bg-sunken">
+            <input
+              type="text"
+              value={caption.text}
+              onChange={(event) => patchCaption({ text: event.target.value })}
+              placeholder="활동 문구 (비워두면 화면에 표시되지 않습니다)"
+              className="h-9 w-full border-b border-line bg-transparent px-3 text-[13px] text-ink outline-none placeholder:text-faint"
+            />
+            <WidgetSettings widget={caption} onChange={patchCaption} compact bare />
+          </div>
+        )}
         {mode === "timer" && (
           <>
             <div className="flex flex-wrap items-center justify-center gap-3">

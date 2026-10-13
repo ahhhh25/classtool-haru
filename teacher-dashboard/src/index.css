@@ -479,6 +479,28 @@ input[type="number"]::-webkit-outer-spin-button {
   padding: var(--name-py, 0.25rem) var(--name-px-pad, 0.5rem);
 }
 
+.timer-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+}
+
+.timer-caption {
+  max-width: min(92vw, 56rem);
+  margin-bottom: clamp(0.7rem, 1.4vw, 1.15rem);
+  line-height: 1.25;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.timer-caption.has-bg {
+  padding: 0.18em 0.55em;
+  border-radius: 0.4em;
+}
+
 .timer-face {
   display: flex;
   flex-direction: column;
