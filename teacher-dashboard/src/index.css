@@ -480,27 +480,31 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .timer-stage {
-  position: relative;
-  display: flex;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
-  flex-direction: column;
+  justify-items: center;
   align-items: center;
-  justify-content: center;
+}
+
+.timer-stage.has-caption {
+  grid-template-rows: minmax(min-content, 1fr) auto minmax(0, 1fr);
 }
 
 .timer-caption-slot {
-  position: absolute;
-  top: 25%;
-  left: 0;
-  right: 0;
-  z-index: 1;
+  grid-row: 1;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 0 1rem;
-  transform: translateY(-50%);
-  pointer-events: none;
+  min-height: 0;
+  max-width: 100%;
+  padding-inline: 1rem;
+}
+
+.timer-stage.has-caption .timer-caption-slot {
+  padding-bottom: clamp(1rem, 2.4vw, 1.75rem);
 }
 
 .timer-caption {
@@ -511,12 +515,19 @@ input[type="number"]::-webkit-outer-spin-button {
   overflow-wrap: anywhere;
 }
 
+.timer-stage-spacer {
+  grid-row: 3;
+  min-height: 0;
+  width: 100%;
+}
+
 .timer-caption.has-bg {
   padding: 0.18em 0.55em;
   border-radius: 0.4em;
 }
 
 .timer-face {
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   align-items: center;

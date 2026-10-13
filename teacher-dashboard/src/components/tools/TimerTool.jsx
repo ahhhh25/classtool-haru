@@ -620,10 +620,10 @@ export default function TimerTool() {
         </div>
       </div>
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-        <div className="timer-stage">
-          {captionText ? (
-            <div className="timer-caption-slot">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-6">
+        <div className={`timer-stage ${captionText ? "has-caption" : ""}`}>
+          <div className="timer-caption-slot">
+            {captionText ? (
               <p
                 className={`timer-caption ${captionBg ? "has-bg" : ""}`}
                 style={{
@@ -639,8 +639,8 @@ export default function TimerTool() {
               >
                 {caption.text}
               </p>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
           <div className="timer-face">
             <p
               key={lastTen ? pulseSecond : "clock"}
@@ -665,6 +665,7 @@ export default function TimerTool() {
               </div>
             )}
           </div>
+          <div className="timer-stage-spacer" aria-hidden="true" />
         </div>
       </div>
 
