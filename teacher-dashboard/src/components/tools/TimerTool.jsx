@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { Maximize2, Minimize2, Pause, Play, RotateCcw, Timer, Watch } from "lucide-react"
+import { Maximize2, Minimize2, Pause, Play, Plus, RotateCcw, Timer, Trash2, Type, Watch } from "lucide-react"
 import { DEFAULT_FONT, fontFamilyCss } from "../../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR, widgetBackground } from "../../constants/palette"
 import { contentColor } from "../../theme/displayColor"
@@ -10,6 +10,7 @@ import { parseStoredSize, resolveFontId } from "../../utils/editorStyle"
 import { createTimerAudio } from "../../utils/timerAudio"
 import { SFX_VOLUME_STEPS, clampSfxVolume, loadSfxVolume, TIMER_PREFS_KEY } from "../../utils/sfxVolume"
 import { isHaruReceiver, subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
+import SettingsModal from "../SettingsModal"
 import WidgetSettings from "../WidgetSettings"
 import ConfettiBurst from "./ConfettiBurst"
 
@@ -110,6 +111,24 @@ function hydrateCaption(raw) {
   }
 }
 
+function hydratePhrase(raw) {
+  const caption = hydrateCaption(raw)
+  if (!caption) return null
+  const text = caption.text.replace(/^\s+|\s+$/g, "")
+  if (!text) return null
+  return {
+    ...caption,
+    text,
+    id: String(raw.id || `cap-${Date.now()}`),
+  }
+}
+
+function loadCaptionPhrases() {
+  const stored = loadJson(TIMER_PREFS_KEY, {}) || {}
+  if (!Array.isArray(stored.captionPhrases)) return []
+  return stored.captionPhrases.map(hydratePhrase).filter(Boolean)
+}
+
 export default function TimerTool() {
   const { theme } = useTheme()
   const isReceiver = isHaruReceiver()
@@ -123,6 +142,8 @@ export default function TimerTool() {
   const [warnSeconds, setWarnSeconds] = useState(() => loadWarnPrefs().seconds)
   const [sfxVolume, setSfxVolume] = useState(() => loadSfxVolume())
   const [caption, setCaption] = useState(() => loadCaptionPrefs())
+  const [captionPhrases, setCaptionPhrases] = useState(() => loadCaptionPhrases())
+  const [captionOpen, setCaptionOpen] = useState(false)
   const [immersive, setImmersive] = useState(false)
   const [burstId, setBurstId] = useState(0)
   const [finished, setFinished] = useState(false)
@@ -169,9 +190,10 @@ export default function TimerTool() {
       warnSeconds,
       sfxVolume,
       caption,
+      captionPhrases,
     })
     audioRef.current?.setVolume(sfxVolume)
-  }, [warnEnabled, warnSeconds, sfxVolume, caption])
+  }, [warnEnabled, warnSeconds, sfxVolume, caption, captionPhrases])
 
   const stopTension = () => {
     tensionOnRef.current = false
@@ -265,6 +287,7 @@ export default function TimerTool() {
 
   useEffect(() => {
     if (!immersive) return undefined
+    setCaptionOpen(false)
     const node = rootRef.current
     node?.requestFullscreen?.().catch(() => {})
     return undefined
@@ -514,6 +537,28 @@ export default function TimerTool() {
     })
   }
 
+  const applyCaption = (next) => {
+    const hydrated = hydrateCaption(next)
+    if (!hydrated) return
+    setCaption(hydrated)
+    syncSend(SYNC.TIMER_CAPTION, hydrated)
+  }
+
+  const saveCaptionPhrase = () => {
+    const text = caption.text.replace(/^\s+|\s+$/g, "")
+    if (!text) return
+    const item = {
+      ...caption,
+      text,
+      id: crypto.randomUUID(),
+    }
+    setCaptionPhrases((current) => [...current, item])
+  }
+
+  const deleteCaptionPhrase = (id) => {
+    setCaptionPhrases((current) => current.filter((item) => item.id !== id))
+  }
+
   const shell = (
     <div
       ref={rootRef}
@@ -553,14 +598,26 @@ export default function TimerTool() {
             )
           })}
         </div>
-        <button
-          type="button"
-          onClick={() => (immersive ? exitImmersive() : enterImmersive())}
-          className="accent-hover flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] text-icon hover:bg-hover"
-        >
-          {immersive ? <Minimize2 size={14} strokeWidth={1.5} /> : <Maximize2 size={14} strokeWidth={1.5} />}
-          {immersive ? "전체화면 종료" : "전체화면"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {!immersive && !isReceiver && (
+            <button
+              type="button"
+              onClick={() => setCaptionOpen(true)}
+              className="accent-hover flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] text-icon hover:bg-hover"
+            >
+              <Type size={14} strokeWidth={1.5} />
+              문구 설정
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => (immersive ? exitImmersive() : enterImmersive())}
+            className="accent-hover flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] text-icon hover:bg-hover"
+          >
+            {immersive ? <Minimize2 size={14} strokeWidth={1.5} /> : <Maximize2 size={14} strokeWidth={1.5} />}
+            {immersive ? "전체화면 종료" : "전체화면"}
+          </button>
+        </div>
       </div>
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
@@ -610,18 +667,6 @@ export default function TimerTool() {
       </div>
 
       <div className="relative z-10 flex shrink-0 flex-col items-center gap-4 px-5 pb-7">
-        {!immersive && !isReceiver && (
-          <div className="w-full max-w-5xl overflow-x-auto rounded-xl border border-line bg-sunken">
-            <input
-              type="text"
-              value={caption.text}
-              onChange={(event) => patchCaption({ text: event.target.value })}
-              placeholder="활동 문구 (비워두면 화면에 표시되지 않습니다)"
-              className="h-9 w-full border-b border-line bg-transparent px-3 text-[13px] text-ink outline-none placeholder:text-faint"
-            />
-            <WidgetSettings widget={caption} onChange={patchCaption} compact bare />
-          </div>
-        )}
         {mode === "timer" && (
           <>
             <div className="flex flex-wrap items-center justify-center gap-3">
@@ -761,6 +806,69 @@ export default function TimerTool() {
     </main>
   )
 
-  if (immersive) return createPortal(shell, document.body)
-  return frame
+  return (
+    <>
+      {immersive ? createPortal(shell, document.body) : frame}
+      {captionOpen && !isReceiver && (
+        <SettingsModal title="문구 설정" onClose={() => setCaptionOpen(false)} fit overflowVisible>
+          <div className="border-b border-line">
+            <input
+              type="text"
+              value={caption.text}
+              onChange={(event) => patchCaption({ text: event.target.value })}
+              placeholder="활동 문구 (비워두면 화면에 표시되지 않습니다)"
+              autoFocus
+              className="h-11 w-full bg-transparent px-4 text-[14px] text-ink outline-none placeholder:text-faint"
+            />
+          </div>
+          <WidgetSettings widget={caption} onChange={patchCaption} compact bare />
+          <div className="space-y-3 border-t border-line px-4 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={saveCaptionPhrase}
+                disabled={!captionText}
+                className="flex h-9 items-center gap-1 rounded-md border border-line px-3 text-[13px] text-icon transition-colors hover:bg-hover hover:text-ink disabled:opacity-40"
+              >
+                <Plus size={15} strokeWidth={1.5} />
+                현재 문구 저장
+              </button>
+              <button
+                type="button"
+                onClick={() => setCaptionOpen(false)}
+                className="h-9 rounded-md border border-line px-4 text-[13px] text-ink transition-colors hover:bg-hover"
+              >
+                완료
+              </button>
+            </div>
+            <ul className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+              {captionPhrases.length === 0 && (
+                <li className="text-[12px] text-faint">저장된 문구가 없습니다.</li>
+              )}
+              {captionPhrases.map((item) => (
+                <li key={item.id} className="flex max-w-full items-center">
+                  <button
+                    type="button"
+                    onClick={() => applyCaption(item)}
+                    className="max-w-[16rem] truncate rounded-full border border-line bg-sunken px-3 py-1 text-[12px] text-ink-soft transition-colors hover:bg-hover hover:text-ink"
+                    title={item.text}
+                  >
+                    {item.text}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="문구 삭제"
+                    onClick={() => deleteCaptionPhrase(item.id)}
+                    className="ml-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-faint hover:bg-hover hover:text-ink"
+                  >
+                    <Trash2 size={12} strokeWidth={1.5} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </SettingsModal>
+      )}
+    </>
+  )
 }
