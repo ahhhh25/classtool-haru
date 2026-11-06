@@ -20,7 +20,7 @@ import {
   loadDashboard,
   saveDashboard,
 } from "./utils/dashboardStore"
-import { isHaruReceiver, subscribeSync, SYNC, syncSend, scheduleDashboardSync, flushDashboardSync } from "./utils/syncChannel"
+import { isHaruReceiver, persistWidgetFocus, readWidgetFocus, subscribeSync, SYNC, syncSend, scheduleDashboardSync, flushDashboardSync } from "./utils/syncChannel"
 import { createLayoutItem, createWidget, mergeLayoutChange } from "./utils/widgets"
 
 export default function App() {
@@ -36,7 +36,7 @@ export default function App() {
   const [layout, setLayout] = useState(saved.layout)
   const [stackOrder, setStackOrder] = useState(saved.stackOrder)
   const [layoutPresets, setLayoutPresets] = useState(saved.layoutPresets ?? [])
-  const [focusedWidgetId, setFocusedWidgetId] = useState(null)
+  const [focusedWidgetId, setFocusedWidgetId] = useState(() => (isReceiver ? readWidgetFocus() : null))
   const widgetsRef = useRef(widgets)
   widgetsRef.current = widgets
   const focusedWidgetIdRef = useRef(null)
@@ -63,11 +63,19 @@ export default function App() {
     })
   }, [])
 
+  const applyRemoteFocus = useCallback((id) => {
+    const next = typeof id === "string" && id ? id : null
+    focusedWidgetIdRef.current = next
+    setFocusedWidgetId(next)
+    if (next) setActiveView(VIEWS.dashboard)
+  }, [])
+
   const setFocus = useCallback(
     (id) => {
-      focusedWidgetIdRef.current = id
-      setFocusedWidgetId(id)
-      if (!isReceiver) syncSend(SYNC.WIDGET_FOCUS, { widgetId: id ?? null })
+      const next = typeof id === "string" && id ? id : null
+      focusedWidgetIdRef.current = next
+      setFocusedWidgetId(next)
+      if (!isReceiver) persistWidgetFocus(next)
     },
     [isReceiver],
   )
@@ -91,13 +99,11 @@ export default function App() {
       if (msg.type === SYNC.STATE_REQUEST) {
         if (isReceiver) return
         sendViewSync()
+        persistWidgetFocus(focusedWidgetIdRef.current)
         return
       }
       if (msg.type === SYNC.WIDGET_FOCUS) {
-        const id = msg.payload?.widgetId ?? null
-        focusedWidgetIdRef.current = id
-        setFocusedWidgetId(id)
-        if (id) setActiveView(VIEWS.dashboard)
+        applyRemoteFocus(msg.payload?.widgetId)
         return
       }
       if (msg.type === SYNC.VIEW_CHANGE) {
@@ -107,12 +113,9 @@ export default function App() {
         if (payload.pickerGroupMode) setPickerGroupMode(payload.pickerGroupMode)
         if (payload.settingsSub) setSettingsSub(payload.settingsSub)
         if (Object.hasOwn(payload, "focusedWidgetId")) {
-          const id = payload.focusedWidgetId || null
-          focusedWidgetIdRef.current = id
-          setFocusedWidgetId(id)
+          applyRemoteFocus(payload.focusedWidgetId)
         } else if (payload.view && payload.view !== VIEWS.dashboard) {
-          focusedWidgetIdRef.current = null
-          setFocusedWidgetId(null)
+          applyRemoteFocus(null)
         }
         return
       }
@@ -129,7 +132,7 @@ export default function App() {
         return kept
       })
     })
-  }, [isReceiver, sendViewSync])
+  }, [applyRemoteFocus, isReceiver, sendViewSync])
 
   useEffect(() => {
     if (!isReceiver) return undefined
@@ -358,7 +361,7 @@ export default function App() {
         )
       )}
       {focusedWidget && activeView === VIEWS.dashboard && (
-        <FocusMode onClose={() => setFocus(null)}>
+        <FocusMode inert={isReceiver} onClose={() => setFocus(null)}>
           <WidgetCard
             widget={focusedWidget}
             focused
@@ -377,7 +380,7 @@ export default function App() {
       {isReceiver &&
         createPortal(
           <div
-            className="fixed inset-0 z-[9999] cursor-not-allowed"
+            className="pointer-events-auto fixed inset-0 z-40 cursor-not-allowed bg-transparent"
             aria-hidden
           />,
           document.body,

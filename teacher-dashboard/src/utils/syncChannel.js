@@ -1,4 +1,5 @@
 const CHANNEL_NAME = "haru-sync"
+const WIDGET_FOCUS_KEY = "classtool-widget-focus"
 const RECENT_ID_LIMIT = 80
 
 export const SYNC = {
@@ -50,6 +51,37 @@ const recentSet = new Set()
 const listeners = new Set()
 
 let channel = null
+let storageBound = false
+
+function emitToListeners(msg) {
+  listeners.forEach((handler) => {
+    try {
+      handler(msg)
+    } catch {
+      /* ignore subscriber errors */
+    }
+  })
+}
+
+export function readWidgetFocus() {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(WIDGET_FOCUS_KEY) || "null")
+    return typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
+  } catch {
+    return null
+  }
+}
+
+export function persistWidgetFocus(widgetId) {
+  if (isHaruReceiver()) return
+  const id = typeof widgetId === "string" && widgetId ? widgetId : null
+  try {
+    window.localStorage.setItem(WIDGET_FOCUS_KEY, JSON.stringify({ widgetId: id, at: Date.now() }))
+  } catch {
+    /* ignore quota / private mode */
+  }
+  syncSend(SYNC.WIDGET_FOCUS, { widgetId: id })
+}
 
 function rememberMessageId(id) {
   if (typeof id !== "string" || !id) return false
@@ -63,7 +95,30 @@ function rememberMessageId(id) {
   return true
 }
 
+function bindStorageSync() {
+  if (storageBound || typeof window === "undefined") return
+  storageBound = true
+  window.addEventListener("storage", (event) => {
+    if (event.key !== WIDGET_FOCUS_KEY) return
+    let widgetId = null
+    try {
+      const raw = JSON.parse(event.newValue || "null")
+      widgetId = typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
+    } catch {
+      widgetId = null
+    }
+    emitToListeners({
+      type: SYNC.WIDGET_FOCUS,
+      payload: { widgetId },
+      sourceId: "storage",
+      messageId: `storage-focus-${Date.now()}`,
+      timestamp: Date.now(),
+    })
+  })
+}
+
 function getChannel() {
+  bindStorageSync()
   if (typeof BroadcastChannel === "undefined") return null
   if (!channel) {
     channel = new BroadcastChannel(CHANNEL_NAME)
@@ -72,13 +127,7 @@ function getChannel() {
       if (!msg || typeof msg !== "object") return
       if (msg.sourceId === sourceId) return
       if (msg.messageId && !rememberMessageId(msg.messageId)) return
-      listeners.forEach((handler) => {
-        try {
-          handler(msg)
-        } catch {
-          /* ignore subscriber errors */
-        }
-      })
+      emitToListeners(msg)
     }
   }
   return channel

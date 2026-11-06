@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { createPortal } from "react-dom"
 
-export default function FocusMode({ onClose, children }) {
+export default function FocusMode({ onClose, children, inert = false }) {
   useEffect(() => {
     const previous = document.body.style.overflow
     document.body.style.overflow = "hidden"
@@ -11,7 +11,11 @@ export default function FocusMode({ onClose, children }) {
   }, [])
 
   return createPortal(
-    <div className="fixed inset-0 z-[45] flex items-center justify-center p-3">
+    <div
+      className={`fixed inset-0 z-[10050] flex items-center justify-center p-3 ${
+        inert ? "pointer-events-none" : ""
+      }`}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/60 backdrop-blur-md"
