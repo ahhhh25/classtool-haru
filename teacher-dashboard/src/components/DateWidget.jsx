@@ -3,6 +3,7 @@ import { fontFamilyCss } from "../constants/fonts"
 import { dateFitKey, formatDateParts, normalizeDisplayStyle } from "../constants/displayStyles"
 import { useFitText } from "../hooks/useFitText"
 import { contentColor } from "../theme/displayColor"
+import { textDecorationCss } from "../utils/editorStyle"
 import { useTheme } from "../theme/ThemeProvider"
 
 export default function DateWidget({ widget }) {
@@ -13,7 +14,7 @@ export default function DateWidget({ widget }) {
   const { boxRef, textRef, pt } = useFitText(
     dateFitKey(now, style),
     widget.fontSize,
-    `${style}-${widget.fontFamily}-${widget.bold}-${theme}`,
+    `${style}-${widget.fontFamily}-${widget.bold}-${widget.strike}-${theme}`,
   )
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function DateWidget({ widget }) {
     fontSize: `${pt}pt`,
     fontWeight: widget.bold ? 700 : 400,
     color,
-    textDecoration: widget.underline ? "underline" : "none",
+    textDecoration: textDecorationCss(widget.underline, widget.strike),
     textUnderlineOffset: widget.underline ? "0.16em" : undefined,
   }
 

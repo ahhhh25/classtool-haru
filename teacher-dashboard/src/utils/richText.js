@@ -24,6 +24,7 @@ export function createRun(text, style = {}) {
     color: style.color ?? "#FFFFFF",
     bold: Boolean(style.bold),
     underline: Boolean(style.underline),
+    strike: Boolean(style.strike),
   }
 }
 
@@ -43,6 +44,7 @@ export function styleFromWidget(widget) {
     color: widget.textColor,
     bold: widget.bold,
     underline: widget.underline,
+    strike: widget.strike,
   }
 }
 
@@ -53,6 +55,7 @@ export function widgetPatchToRunPatch(patch) {
   if (patch.textColor != null) next.color = patch.textColor
   if (patch.bold != null) next.bold = patch.bold
   if (patch.underline != null) next.underline = patch.underline
+  if (patch.strike != null) next.strike = patch.strike
   return next
 }
 
@@ -62,7 +65,8 @@ function sameStyle(a, b) {
     a.fontSize === b.fontSize &&
     a.color === b.color &&
     a.bold === b.bold &&
-    a.underline === b.underline
+    a.underline === b.underline &&
+    a.strike === b.strike
   )
 }
 
@@ -114,6 +118,7 @@ function styleForInsert(base, insertStyle) {
     ...base,
     ...(insertStyle.bold !== undefined ? { bold: insertStyle.bold } : {}),
     ...(insertStyle.underline !== undefined ? { underline: insertStyle.underline } : {}),
+    ...(insertStyle.strike !== undefined ? { strike: insertStyle.strike } : {}),
   }
 }
 
@@ -204,6 +209,7 @@ export function toolbarWidgetFromRuns(runs, selection, fallback) {
         textColor: run.color,
         bold: run.bold,
         underline: run.underline,
+        strike: run.strike,
       }
     }
     cursor = runEnd
@@ -215,6 +221,7 @@ export function toolbarWidgetFromRuns(runs, selection, fallback) {
     textColor: last.color,
     bold: last.bold,
     underline: last.underline,
+    strike: last.strike,
   }
 }
 

@@ -39,8 +39,38 @@ export default function App() {
   const [focusedWidgetId, setFocusedWidgetId] = useState(null)
   const widgetsRef = useRef(widgets)
   widgetsRef.current = widgets
+  const focusedWidgetIdRef = useRef(null)
+  focusedWidgetIdRef.current = focusedWidgetId
+  const viewSyncRef = useRef({})
+  viewSyncRef.current = {
+    view: activeView,
+    pickerSub,
+    pickerGroupMode,
+    settingsSub,
+    focusedWidgetId,
+  }
   const skipDashboardSync = useRef(true)
   const applyingDashboardRemote = useRef(false)
+
+  const sendViewSync = useCallback((overrides = {}) => {
+    const snap = { ...viewSyncRef.current, ...overrides }
+    syncSend(SYNC.VIEW_CHANGE, {
+      view: snap.view,
+      pickerSub: snap.pickerSub,
+      pickerGroupMode: snap.pickerGroupMode,
+      settingsSub: snap.settingsSub,
+      focusedWidgetId: snap.focusedWidgetId ?? null,
+    })
+  }, [])
+
+  const setFocus = useCallback(
+    (id) => {
+      focusedWidgetIdRef.current = id
+      setFocusedWidgetId(id)
+      if (!isReceiver) syncSend(SYNC.WIDGET_FOCUS, { widgetId: id ?? null })
+    },
+    [isReceiver],
+  )
 
   useEffect(() => {
     if (isReceiver) return
@@ -58,13 +88,32 @@ export default function App() {
 
   useEffect(() => {
     return subscribeSync((msg) => {
+      if (msg.type === SYNC.STATE_REQUEST) {
+        if (isReceiver) return
+        sendViewSync()
+        return
+      }
+      if (msg.type === SYNC.WIDGET_FOCUS) {
+        const id = msg.payload?.widgetId ?? null
+        focusedWidgetIdRef.current = id
+        setFocusedWidgetId(id)
+        if (id) setActiveView(VIEWS.dashboard)
+        return
+      }
       if (msg.type === SYNC.VIEW_CHANGE) {
         const payload = msg.payload || {}
         if (payload.view) setActiveView(payload.view)
         if (payload.pickerSub) setPickerSub(payload.pickerSub)
         if (payload.pickerGroupMode) setPickerGroupMode(payload.pickerGroupMode)
         if (payload.settingsSub) setSettingsSub(payload.settingsSub)
-        if (payload.view && payload.view !== VIEWS.dashboard) setFocusedWidgetId(null)
+        if (Object.hasOwn(payload, "focusedWidgetId")) {
+          const id = payload.focusedWidgetId || null
+          focusedWidgetIdRef.current = id
+          setFocusedWidgetId(id)
+        } else if (payload.view && payload.view !== VIEWS.dashboard) {
+          focusedWidgetIdRef.current = null
+          setFocusedWidgetId(null)
+        }
         return
       }
       if (msg.type !== SYNC.DASHBOARD_UPDATE) return
@@ -74,9 +123,19 @@ export default function App() {
       setLayout(next.layout)
       setStackOrder(next.stackOrder)
       setLayoutPresets(next.layoutPresets ?? [])
-      setFocusedWidgetId((id) => (next.widgets.some((widget) => widget.id === id) ? id : null))
+      setFocusedWidgetId((id) => {
+        const kept = next.widgets.some((widget) => widget.id === id) ? id : null
+        focusedWidgetIdRef.current = kept
+        return kept
+      })
     })
-  }, [])
+  }, [isReceiver, sendViewSync])
+
+  useEffect(() => {
+    if (!isReceiver) return undefined
+    syncSend(SYNC.STATE_REQUEST, {})
+    return undefined
+  }, [isReceiver])
 
   useEffect(() => {
     if (isReceiver) return undefined
@@ -135,11 +194,11 @@ export default function App() {
 
   const closeWidget = useCallback((id) => {
     if (widgetsRef.current.find((widget) => widget.id === id)?.locked) return
-    setFocusedWidgetId((focused) => (focused === id ? null : focused))
+    if (focusedWidgetIdRef.current === id) setFocus(null)
     setWidgets((current) => current.filter((widget) => widget.id !== id))
     setLayout((items) => items.filter((item) => item.i !== id))
     setStackOrder((order) => order.filter((item) => item !== id))
-  }, [])
+  }, [setFocus])
 
   const handleLayoutChange = useCallback((next) => {
     setLayout((current) => mergeLayoutChange(current, next))
@@ -159,14 +218,9 @@ export default function App() {
       if (!preset) return
       setLayout((items) => applyLayoutPreset(items, preset.layout))
       setActiveView(VIEWS.dashboard)
-      syncSend(SYNC.VIEW_CHANGE, {
-        view: VIEWS.dashboard,
-        pickerSub,
-        pickerGroupMode,
-        settingsSub,
-      })
+      sendViewSync({ view: VIEWS.dashboard })
     },
-    [layoutPresets, pickerSub, pickerGroupMode, settingsSub],
+    [layoutPresets, sendViewSync],
   )
 
   const deleteLayoutPreset = useCallback((id) => {
@@ -196,23 +250,22 @@ export default function App() {
     const nextSettings = view === VIEWS.settings ? "general" : settingsSub
     setActiveView(view)
     if (view === VIEWS.settings) setSettingsSub("general")
-    if (view !== VIEWS.dashboard) setFocusedWidgetId(null)
-    syncSend(SYNC.VIEW_CHANGE, {
+    if (view !== VIEWS.dashboard) setFocus(null)
+    sendViewSync({
       view,
-      pickerSub,
-      pickerGroupMode,
       settingsSub: nextSettings,
+      focusedWidgetId: view === VIEWS.dashboard ? focusedWidgetIdRef.current : null,
     })
   }
 
   const openPickerSub = (id) => {
     setPickerSub(id)
     setActiveView(VIEWS.picker)
-    syncSend(SYNC.VIEW_CHANGE, {
+    setFocus(null)
+    sendViewSync({
       view: VIEWS.picker,
       pickerSub: id,
-      pickerGroupMode,
-      settingsSub,
+      focusedWidgetId: null,
     })
   }
 
@@ -220,11 +273,12 @@ export default function App() {
     setPickerSub("group")
     setPickerGroupMode(id)
     setActiveView(VIEWS.picker)
-    syncSend(SYNC.VIEW_CHANGE, {
+    setFocus(null)
+    sendViewSync({
       view: VIEWS.picker,
       pickerSub: "group",
       pickerGroupMode: id,
-      settingsSub,
+      focusedWidgetId: null,
     })
   }
 
@@ -257,7 +311,7 @@ export default function App() {
           stackOrder={stackOrder}
           onBringToFront={bringToFront}
           focusedWidgetId={focusedWidgetId}
-          onToggleFocus={(id) => setFocusedWidgetId(id)}
+          onToggleFocus={setFocus}
         />
       </div>
       <div className={activeView === VIEWS.notepad ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
@@ -283,12 +337,11 @@ export default function App() {
           onOpenStudents={() => {
             setActiveView(VIEWS.settings)
             setSettingsSub("students")
-            setFocusedWidgetId(null)
-            syncSend(SYNC.VIEW_CHANGE, {
+            setFocus(null)
+            sendViewSync({
               view: VIEWS.settings,
-              pickerSub,
-              pickerGroupMode,
               settingsSub: "students",
+              focusedWidgetId: null,
             })
           }}
         />
@@ -305,11 +358,11 @@ export default function App() {
         )
       )}
       {focusedWidget && activeView === VIEWS.dashboard && (
-        <FocusMode onClose={() => setFocusedWidgetId(null)}>
+        <FocusMode onClose={() => setFocus(null)}>
           <WidgetCard
             widget={focusedWidget}
             focused
-            onToggleFocus={() => setFocusedWidgetId(null)}
+            onToggleFocus={() => setFocus(null)}
             onToggleLock={() =>
               updateWidget(focusedWidget.id, { locked: !focusedWidget.locked })
             }

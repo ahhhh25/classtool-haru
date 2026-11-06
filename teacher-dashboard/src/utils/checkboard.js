@@ -73,6 +73,7 @@ export function resolveCheckItemStyle(item, widget) {
     textColor: item?.color || widget.textColor,
     bold: item?.bold ?? Boolean(widget.bold),
     underline: item?.underline ?? Boolean(widget.underline),
+    strike: item?.strike ?? Boolean(widget.strike),
   }
 }
 

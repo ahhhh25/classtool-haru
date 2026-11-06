@@ -105,6 +105,69 @@ export default function PickerTool({
   )
 }
 
+function FitAnnounceText({ text, subText }) {
+  const boxRef = useRef(null)
+  const innerRef = useRef(null)
+  const [fontPx, setFontPx] = useState(80)
+
+  useLayoutEffect(() => {
+    const box = boxRef.current
+    const inner = innerRef.current
+    if (!box || !inner) return undefined
+
+    const fit = () => {
+      const availW = Math.max(8, box.clientWidth)
+      const availH = Math.max(8, box.clientHeight)
+      const maxPx = Math.min(112, Math.max(24, availH * 0.78))
+      let low = 10
+      let high = maxPx
+      inner.style.width = `${availW}px`
+      for (let i = 0; i < 18; i += 1) {
+        const mid = (low + high) / 2
+        inner.style.fontSize = `${mid}px`
+        const fits = inner.scrollWidth <= availW + 1 && inner.scrollHeight <= availH + 1
+        if (fits) low = mid
+        else high = mid
+      }
+      let next = Math.max(10, Math.floor(low))
+      inner.style.fontSize = `${next}px`
+      while (
+        next > 10 &&
+        (inner.scrollWidth > availW + 0.5 || inner.scrollHeight > availH + 0.5)
+      ) {
+        next -= 1
+        inner.style.fontSize = `${next}px`
+      }
+      setFontPx(next)
+    }
+
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [text, subText])
+
+  return (
+    <>
+      <div
+        ref={boxRef}
+        className="relative z-[1] flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden"
+      >
+        <p
+          ref={innerRef}
+          className="min-w-0 w-full text-center font-semibold leading-[1.12] break-keep text-ink"
+          style={{ fontSize: `${fontPx}px`, overflowWrap: "anywhere" }}
+        >
+          {text}
+        </p>
+      </div>
+      {subText ? (
+        <p className="relative z-[1] mt-2 shrink-0 text-[13px] text-muted">{subText}</p>
+      ) : null}
+    </>
+  )
+}
+
 function IndividualPick({ students }) {
   const [count, setCount] = useState(1)
   const [pickedIds, setPickedIds] = useState(() => new Set())
@@ -226,10 +289,9 @@ function IndividualPick({ students }) {
         </label>
       </div>
 
-      <div className="relative flex h-[12rem] shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl border border-line bg-sunken p-6 sm:h-[14rem]">
+      <div className="relative flex h-[12rem] shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-sunken p-6 sm:h-[14rem]">
         <ConfettiBurst burstId={burstId} />
-        <p className="text-center text-[80px] font-semibold leading-none text-ink sm:text-[112px]">{display}</p>
-        {subText ? <p className="mt-2 text-[13px] text-muted">{subText}</p> : null}
+        <FitAnnounceText text={display} subText={subText} />
       </div>
 
       <div className="flex shrink-0 justify-center gap-2">

@@ -10,6 +10,54 @@ import {
   serializeShapes,
 } from "../utils/notepadDrawing"
 
+const DRAWING_TOOLS = new Set(["pen", "highlighter", "eraser", "shape"])
+
+function caretRangeFromPoint(clientX, clientY) {
+  if (typeof document.caretRangeFromPoint === "function") {
+    return document.caretRangeFromPoint(clientX, clientY)
+  }
+  const pos = document.caretPositionFromPoint?.(clientX, clientY)
+  if (!pos) return null
+  const range = document.createRange()
+  range.setStart(pos.offsetNode, pos.offset)
+  range.collapse(true)
+  return range
+}
+
+function textRangeAtPoint(editor, clientX, clientY, overlay) {
+  if (!editor) return null
+  const previousOverlay = overlay?.style.pointerEvents
+  const previousEditor = editor.style.pointerEvents
+  if (overlay) overlay.style.pointerEvents = "none"
+  editor.style.pointerEvents = "auto"
+  const range = caretRangeFromPoint(clientX, clientY)
+  if (overlay) overlay.style.pointerEvents = previousOverlay || ""
+  editor.style.pointerEvents = previousEditor
+  if (!range || !editor.contains(range.startContainer)) return null
+  const node = range.startContainer
+  if (node.nodeType !== Node.TEXT_NODE) return null
+  const text = node.textContent || ""
+  if (!text.replace(/\s+/g, "")) return null
+  const index = Math.min(
+    Math.max(range.startOffset >= text.length ? text.length - 1 : range.startOffset, 0),
+    Math.max(0, text.length - 1),
+  )
+  const probe = document.createRange()
+  probe.setStart(node, index)
+  probe.setEnd(node, index + 1)
+  for (const rect of probe.getClientRects()) {
+    if (
+      clientX >= rect.left - 4 &&
+      clientX <= rect.right + 4 &&
+      clientY >= rect.top - 4 &&
+      clientY <= rect.bottom + 4
+    ) {
+      return range
+    }
+  }
+  return null
+}
+
 export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
@@ -221,6 +269,43 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
     [notifyChange, redraw, saveDrawingState, scrollerRef, setTool],
   )
 
+  const prepareSelectDrag = useCallback((hit, pos) => {
+    selectedRef.current = hit
+    setSelectedId(hit.id)
+    drawingRef.current = true
+    resizingRef.current = false
+    dragStartRef.current = pos
+    if (hit.type === "pen" || hit.type === "highlighter") {
+      hit.originalPoints = JSON.parse(JSON.stringify(hit.points))
+    } else if (hit.type === "image") {
+      originalRef.current = { x: hit.x, y: hit.y, w: hit.w, h: hit.h }
+    } else {
+      originalRef.current = {
+        x: hit.startX,
+        y: hit.startY,
+        w: hit.endX - hit.startX,
+        h: hit.endY - hit.startY,
+      }
+    }
+  }, [])
+
+  const focusEditorAtPoint = useCallback(
+    (clientX, clientY) => {
+      const editor = editorRef.current
+      const overlay = canvasRef.current
+      if (!editor) return
+      if (overlay) overlay.style.pointerEvents = "none"
+      editor.style.pointerEvents = "auto"
+      editor.focus({ preventScroll: true })
+      const range = caretRangeFromPoint(clientX, clientY)
+      if (!range || !editor.contains(range.startContainer)) return
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+    },
+    [editorRef],
+  )
+
   const deleteSelected = useCallback(() => {
     if (toolRef.current !== "select" || !selectedRef.current) return false
     saveDrawingState()
@@ -239,11 +324,13 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
     if (!canvas || !editor) return
     if (tool === "text") {
       canvas.classList.add("pointer-events-none")
+      canvas.style.pointerEvents = "none"
       canvas.style.zIndex = "20"
       editor.style.zIndex = "30"
       editor.style.pointerEvents = "auto"
     } else {
       canvas.classList.remove("pointer-events-none")
+      canvas.style.pointerEvents = "auto"
       canvas.style.zIndex = "30"
       editor.style.zIndex = "10"
       editor.style.pointerEvents = "none"
@@ -255,55 +342,93 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
     const canvas = canvasRef.current
     if (!canvas) return
 
+    const hitResizeHandle = (pos) => {
+      const selected = selectedRef.current
+      if (!selected) return false
+      if (selected.type === "shape") {
+        if (Math.hypot(selected.endX - pos.x, selected.endY - pos.y) < 22) {
+          drawingRef.current = true
+          resizingRef.current = true
+          dragStartRef.current = pos
+          return true
+        }
+      }
+      if (selected.type === "image") {
+        const handleX = selected.x + selected.w
+        const handleY = selected.y + selected.h
+        if (Math.hypot(handleX - pos.x, handleY - pos.y) < 22) {
+          drawingRef.current = true
+          resizingRef.current = true
+          originalRef.current = {
+            x: selected.x,
+            y: selected.y,
+            w: selected.w,
+            h: selected.h,
+          }
+          return true
+        }
+      }
+      return false
+    }
+
+    const clearSelection = () => {
+      if (!selectedRef.current) return
+      selectedRef.current = null
+      setSelectedId(null)
+      redraw()
+    }
+
+    const startObjectPointer = (event, fromEditor) => {
+      const pos = getMousePos(event)
+      if (toolRef.current === "select" && hitResizeHandle(pos)) return true
+
+      const shapeHit = findShapeAtPos(shapesRef.current, pos.x, pos.y)
+      const textHit = textRangeAtPoint(
+        editorRef.current,
+        event.clientX,
+        event.clientY,
+        canvasRef.current,
+      )
+      const canvasOnTop = toolRef.current !== "text"
+      let target = "empty"
+      if (shapeHit && textHit) target = canvasOnTop ? "shape" : "text"
+      else if (shapeHit) target = "shape"
+      else if (textHit) target = "text"
+
+      if (target === "shape") {
+        event.preventDefault?.()
+        prepareSelectDrag(shapeHit, pos)
+        if (toolRef.current !== "select") setTool("select")
+        else redraw()
+        return true
+      }
+
+      if (target === "text") {
+        if (selectedRef.current) {
+          selectedRef.current = null
+          setSelectedId(null)
+        }
+        if (toolRef.current !== "text") {
+          event.preventDefault?.()
+          setTool("text")
+          focusEditorAtPoint(event.clientX, event.clientY)
+        }
+        return true
+      }
+
+      clearSelection()
+      if (fromEditor) return false
+      return true
+    }
+
     const startDrawing = (event) => {
+      if (event.button != null && event.button !== 0) return
       if (event.target?.closest?.("#drawing-shape-popup")) return
       const pos = getMousePos(event)
       const currentTool = toolRef.current
 
-      if (currentTool === "select") {
-        if (selectedRef.current?.type === "shape") {
-          if (Math.hypot(selectedRef.current.endX - pos.x, selectedRef.current.endY - pos.y) < 22) {
-            drawingRef.current = true
-            resizingRef.current = true
-            dragStartRef.current = pos
-            return
-          }
-        }
-        if (selectedRef.current?.type === "image") {
-          const handleX = selectedRef.current.x + selectedRef.current.w
-          const handleY = selectedRef.current.y + selectedRef.current.h
-          if (Math.hypot(handleX - pos.x, handleY - pos.y) < 22) {
-            drawingRef.current = true
-            resizingRef.current = true
-            originalRef.current = {
-              x: selectedRef.current.x,
-              y: selectedRef.current.y,
-              w: selectedRef.current.w,
-              h: selectedRef.current.h,
-            }
-            return
-          }
-        }
-        const hit = findShapeAtPos(shapesRef.current, pos.x, pos.y)
-        selectedRef.current = hit
-        setSelectedId(hit?.id ?? null)
-        if (hit) {
-          drawingRef.current = true
-          dragStartRef.current = pos
-          if (hit.type === "pen" || hit.type === "highlighter") {
-            hit.originalPoints = JSON.parse(JSON.stringify(hit.points))
-          } else if (hit.type === "image") {
-            originalRef.current = { x: hit.x, y: hit.y, w: hit.w, h: hit.h }
-          } else {
-            originalRef.current = {
-              x: hit.startX,
-              y: hit.startY,
-              w: hit.endX - hit.startX,
-              h: hit.endY - hit.startY,
-            }
-          }
-        }
-        redraw()
+      if (!DRAWING_TOOLS.has(currentTool)) {
+        startObjectPointer(event, false)
         return
       }
 
@@ -441,29 +566,64 @@ export function useNotepadCanvas({ scrollerRef, editorRef, enabled, onChange }) 
       event.preventDefault()
     }
     const onTouchMove = (event) => {
+      if (!drawingRef.current) return
       const touch = event.touches[0]
       draw({ clientX: touch.clientX, clientY: touch.clientY })
       event.preventDefault()
     }
 
+    const onEditorPointerDown = (event) => {
+      if (DRAWING_TOOLS.has(toolRef.current)) return
+      if (event.type === "mousedown" && event.button !== 0) return
+      const point = event.touches?.[0] ?? event
+      startObjectPointer(
+        {
+          clientX: point.clientX,
+          clientY: point.clientY,
+          preventDefault: () => event.preventDefault(),
+        },
+        true,
+      )
+    }
+
+    const onMouseLeave = () => {
+      if (toolRef.current === "select") return
+      stopDrawing()
+    }
+
+    const editor = editorRef.current
     canvas.addEventListener("mousedown", startDrawing)
-    canvas.addEventListener("mousemove", draw)
-    canvas.addEventListener("mouseup", stopDrawing)
-    canvas.addEventListener("mouseleave", stopDrawing)
+    window.addEventListener("mousemove", draw)
+    window.addEventListener("mouseup", stopDrawing)
+    canvas.addEventListener("mouseleave", onMouseLeave)
     canvas.addEventListener("touchstart", onTouchStart, { passive: false })
-    canvas.addEventListener("touchmove", onTouchMove, { passive: false })
-    canvas.addEventListener("touchend", stopDrawing)
+    window.addEventListener("touchmove", onTouchMove, { passive: false })
+    window.addEventListener("touchend", stopDrawing)
+    editor?.addEventListener("mousedown", onEditorPointerDown)
+    editor?.addEventListener("touchstart", onEditorPointerDown, { passive: false })
 
     return () => {
       canvas.removeEventListener("mousedown", startDrawing)
-      canvas.removeEventListener("mousemove", draw)
-      canvas.removeEventListener("mouseup", stopDrawing)
-      canvas.removeEventListener("mouseleave", stopDrawing)
+      window.removeEventListener("mousemove", draw)
+      window.removeEventListener("mouseup", stopDrawing)
+      canvas.removeEventListener("mouseleave", onMouseLeave)
       canvas.removeEventListener("touchstart", onTouchStart)
-      canvas.removeEventListener("touchmove", onTouchMove)
-      canvas.removeEventListener("touchend", stopDrawing)
+      window.removeEventListener("touchmove", onTouchMove)
+      window.removeEventListener("touchend", stopDrawing)
+      editor?.removeEventListener("mousedown", onEditorPointerDown)
+      editor?.removeEventListener("touchstart", onEditorPointerDown)
     }
-  }, [enabled, getMousePos, notifyChange, redraw, saveDrawingState])
+  }, [
+    editorRef,
+    enabled,
+    focusEditorAtPoint,
+    getMousePos,
+    notifyChange,
+    prepareSelectDrag,
+    redraw,
+    saveDrawingState,
+    setTool,
+  ])
 
   useEffect(() => {
     if (!enabled) return

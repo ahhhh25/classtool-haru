@@ -3,6 +3,8 @@ const RECENT_ID_LIMIT = 80
 
 export const SYNC = {
   VIEW_CHANGE: "VIEW_CHANGE",
+  STATE_REQUEST: "STATE_REQUEST",
+  WIDGET_FOCUS: "WIDGET_FOCUS",
   PICKER_DRAW_START: "PICKER_DRAW_START",
   PICKER_RESULT: "PICKER_RESULT",
   PICKER_RESET: "PICKER_RESET",
@@ -83,7 +85,7 @@ function getChannel() {
 }
 
 export function syncSend(type, payload = {}) {
-  if (isHaruReceiver()) return
+  if (isHaruReceiver() && type !== SYNC.STATE_REQUEST) return
   const ch = getChannel()
   if (!ch || !type) return
   ch.postMessage({

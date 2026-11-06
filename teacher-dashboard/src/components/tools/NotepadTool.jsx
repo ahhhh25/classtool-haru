@@ -60,6 +60,7 @@ function emptyNote() {
     textColor: DEFAULT_TEXT_COLOR,
     bold: false,
     underline: false,
+    strike: false,
     updatedAt: new Date().toISOString(),
   }
 }
@@ -75,6 +76,7 @@ function hydrateNote(raw) {
     textColor: raw.textColor || raw.color || DEFAULT_TEXT_COLOR,
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
+    strike: Boolean(raw.strike),
     lineHeight: raw.lineHeight || "normal",
   }
 }
@@ -108,7 +110,7 @@ export default function NotepadTool({ active = true }) {
   const applyingRemote = useRef(false)
   const applyNoteToEditorRef = useRef(() => {})
   const canvasApiRef = useRef(null)
-  const [oneShotMarks, setOneShotMarks] = useState({ bold: false, underline: false })
+  const [oneShotMarks, setOneShotMarks] = useState({ bold: false, underline: false, strike: false })
   const oneShotRef = useRef(oneShotMarks)
   oneShotRef.current = oneShotMarks
 
@@ -320,10 +322,11 @@ export default function NotepadTool({ active = true }) {
 
   const consumeOneShot = () => {
     const marks = oneShotRef.current
-    if (!marks.bold && !marks.underline) return
+    if (!marks.bold && !marks.underline && !marks.strike) return
     if (marks.bold && document.queryCommandState("bold")) document.execCommand("bold")
     if (marks.underline && document.queryCommandState("underline")) document.execCommand("underline")
-    setOneShotMarks({ bold: false, underline: false })
+    if (marks.strike && document.queryCommandState("strikeThrough")) document.execCommand("strikeThrough")
+    setOneShotMarks({ bold: false, underline: false, strike: false })
   }
 
   const patchStyle = (patch) => {
@@ -334,16 +337,18 @@ export default function NotepadTool({ active = true }) {
       lineHeight: activeNote?.lineHeight,
     })
     const persistPatch = { ...patch }
-    if (patch.bold != null || patch.underline != null) {
-      if (appliedToSelection) setOneShotMarks({ bold: false, underline: false })
+    if (patch.bold != null || patch.underline != null || patch.strike != null) {
+      if (appliedToSelection) setOneShotMarks({ bold: false, underline: false, strike: false })
       else {
         setOneShotMarks((current) => ({
           bold: patch.bold ?? current.bold,
           underline: patch.underline ?? current.underline,
+          strike: patch.strike ?? current.strike,
         }))
       }
       delete persistPatch.bold
       delete persistPatch.underline
+      delete persistPatch.strike
     }
     persist(
       notesRef.current.map((note) =>
@@ -439,6 +444,8 @@ export default function NotepadTool({ active = true }) {
       className: editorRef.current?.className ?? "",
       lined: activeNote?.bgMode === "lined",
       canvasUrl: canvasEl && canvasEl.width > 0 ? canvasEl.toDataURL() : "",
+      canvasWidth: canvasEl?.width ?? 0,
+      canvasHeight: canvasEl?.height ?? 0,
     })
   }
 
@@ -565,6 +572,7 @@ export default function NotepadTool({ active = true }) {
                 fontSize: activeNote?.fontSize ?? 36,
                 bold: oneShotMarks.bold,
                 underline: oneShotMarks.underline,
+                strike: oneShotMarks.strike,
                 textColor: activeNote?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -578,6 +586,7 @@ export default function NotepadTool({ active = true }) {
                 fontSize: activeNote?.fontSize ?? 36,
                 bold: oneShotMarks.bold,
                 underline: oneShotMarks.underline,
+                strike: oneShotMarks.strike,
                 textColor: activeNote?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -592,6 +601,7 @@ export default function NotepadTool({ active = true }) {
                 fontSize: activeNote?.fontSize ?? 36,
                 bold: oneShotMarks.bold,
                 underline: oneShotMarks.underline,
+                strike: oneShotMarks.strike,
                 textColor: activeNote?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}
@@ -775,7 +785,7 @@ export default function NotepadTool({ active = true }) {
 
       {fullscreen &&
         createPortal(
-          <div className="fixed inset-0 z-[60] overflow-auto bg-app p-8">
+          <div className="fixed inset-0 z-[60] overflow-x-hidden overflow-y-auto bg-app px-4 pt-12 pb-6">
             <button
               type="button"
               onClick={() => setFullscreen(null)}
@@ -784,11 +794,15 @@ export default function NotepadTool({ active = true }) {
             >
               <X size={16} strokeWidth={1.5} />
             </button>
-            <div className={`relative mx-auto max-w-5xl ${fullscreen.lined ? "bg-white p-6" : ""}`}>
+            <div className={`relative w-full min-w-0 ${fullscreen.lined ? "bg-white" : ""}`}>
               <div
-                className={fullscreen.className}
+                className={`${fullscreen.className} w-full min-w-0 break-words`}
                 ref={(el) => {
-                  if (el && fullscreen.style) el.style.cssText = fullscreen.style
+                  if (!el) return
+                  if (fullscreen.style) el.style.cssText = fullscreen.style
+                  el.style.width = "100%"
+                  el.style.maxWidth = "none"
+                  el.style.overflowWrap = "anywhere"
                 }}
                 dangerouslySetInnerHTML={{ __html: fullscreen.html }}
               />
@@ -796,7 +810,11 @@ export default function NotepadTool({ active = true }) {
                 <img
                   alt=""
                   src={fullscreen.canvasUrl}
-                  className="pointer-events-none absolute top-0 left-0 w-full"
+                  className="pointer-events-none absolute top-0 left-0 max-w-none"
+                  style={{
+                    width: fullscreen.canvasWidth || undefined,
+                    height: fullscreen.canvasHeight || undefined,
+                  }}
                 />
               )}
             </div>

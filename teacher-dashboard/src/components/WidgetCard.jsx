@@ -6,6 +6,7 @@ import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
 import { isKioskLinked, useKioskLink } from "../utils/kioskLinkStore"
 import { findActiveSchedule } from "../utils/richText"
+import { textDecorationCss } from "../utils/editorStyle"
 import AnnouncementWidget from "./AnnouncementWidget"
 import CheckboardWidget, { CheckboardSettings } from "./CheckboardWidget"
 import ClockWidget from "./ClockWidget"
@@ -247,7 +248,7 @@ export default function WidgetCard({
                   fontSize: `${Number(widget.fontSize) * (focused ? 2 : 1)}pt`,
                   fontWeight: widget.bold ? 700 : 400,
                   color: contentColor(widget.textColor, theme),
-                  textDecoration: widget.underline ? "underline" : "none",
+                  textDecoration: textDecorationCss(widget.underline, widget.strike),
                   textUnderlineOffset: widget.underline ? "0.16em" : undefined,
                   lineHeight: 1.35,
                 }}

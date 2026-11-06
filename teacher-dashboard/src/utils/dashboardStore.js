@@ -1,7 +1,16 @@
 import { DEFAULT_DISPLAY_STYLE, normalizeDisplayStyle } from "../constants/displayStyles"
 import { DEFAULT_FONT } from "../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
-import { createAnnouncementItem, createAnnouncementState } from "./announcement"
+import {
+  createAnnouncementItem,
+  createAnnouncementState,
+  expiresAtMs,
+  formatDateInput,
+  formatTimeInput,
+  normalizeDateInput,
+  normalizeTimeInput,
+  scheduledAtMs,
+} from "./announcement"
 import { createCheckboardState } from "./checkboard"
 import { createDdayState } from "./dday"
 import { createNoticeState, plainToRuns } from "./richText"
@@ -24,7 +33,7 @@ export function defaultDashboard() {
     { i: date.id, x: 0, y: 0, w: 4, h: 4, minW: 2, minH: 2 },
     { i: clock.id, x: 4, y: 0, w: 4, h: 4, minW: 2, minH: 2 },
     { i: notice.id, x: 0, y: 4, w: 4, h: 10, minW: 2, minH: 2 },
-    { i: checkboard.id, x: 4, y: 4, w: 4, h: 10, minW: 3, minH: 2 },
+    { i: checkboard.id, x: 4, y: 4, w: 4, h: 10, minW: 1, minH: 2 },
   ]
   return {
     widgets,
@@ -32,6 +41,25 @@ export function defaultDashboard() {
     stackOrder: widgets.map((widget) => widget.id),
     layoutPresets: [],
   }
+}
+
+function hydrateExpireFields(raw) {
+  let expireDate = normalizeDateInput(raw?.expireDate)
+  let expireTime = normalizeTimeInput(raw?.expireTime)
+  if (!expireDate || !expireTime) {
+    const fallback =
+      typeof raw?.expireAt === "number"
+        ? raw.expireAt
+        : typeof raw?.expireAt === "string"
+          ? Date.parse(raw.expireAt)
+          : NaN
+    if (!Number.isFinite(fallback)) return null
+    const date = new Date(fallback)
+    expireDate = formatDateInput(date)
+    expireTime = formatTimeInput(date)
+  }
+  const probe = { expireDate, expireTime }
+  return expiresAtMs(probe) == null ? null : probe
 }
 
 function hydrateAnnouncementItem(raw) {
@@ -43,25 +71,49 @@ function hydrateAnnouncementItem(raw) {
     bgColor: raw.bgColor,
     bold: raw.bold,
     underline: raw.underline,
+    strike: raw.strike,
   })
   const id = typeof raw.id === "string" && raw.id ? raw.id : item.id
-  if (Array.isArray(raw.runs)) {
-    return { ...item, id, bgColor: item.bgColor, runs: raw.runs.filter((run) => run && typeof run.text === "string") }
+  const expire = hydrateExpireFields(raw)
+  const base = Array.isArray(raw.runs)
+    ? { ...item, id, bgColor: item.bgColor, runs: raw.runs.filter((run) => run && typeof run.text === "string") }
+    : {
+        ...item,
+        id,
+        runs:
+          typeof raw.text === "string" && raw.text
+            ? plainToRuns(raw.text, {
+                fontFamily: item.fontFamily,
+                fontSize: item.fontSize,
+                color: item.textColor,
+                bold: item.bold,
+                underline: item.underline,
+                strike: item.strike,
+              })
+            : [],
+      }
+  return expire ? { ...base, ...expire } : base
+}
+
+function hydrateScheduledAnnouncement(raw) {
+  const item = hydrateAnnouncementItem(raw)
+  if (!item) return null
+  let scheduledDate = normalizeDateInput(raw.scheduledDate)
+  let scheduledTime = normalizeTimeInput(raw.scheduledTime)
+  if (!scheduledDate || !scheduledTime) {
+    const fallback =
+      typeof raw.scheduledAt === "number"
+        ? raw.scheduledAt
+        : typeof raw.scheduledAt === "string"
+          ? Date.parse(raw.scheduledAt)
+          : NaN
+    if (!Number.isFinite(fallback)) return null
+    const date = new Date(fallback)
+    scheduledDate = formatDateInput(date)
+    scheduledTime = formatTimeInput(date)
   }
-  const text = typeof raw.text === "string" ? raw.text : ""
-  return {
-    ...item,
-    id,
-    runs: text
-      ? plainToRuns(text, {
-          fontFamily: item.fontFamily,
-          fontSize: item.fontSize,
-          color: item.textColor,
-          bold: item.bold,
-          underline: item.underline,
-        })
-      : [],
-  }
+  const next = { ...item, scheduledDate, scheduledTime }
+  return scheduledAtMs(next) == null ? null : next
 }
 
 const TITLE_RENAMES = {
@@ -90,6 +142,7 @@ function hydrateWidget(raw) {
     bgColor: raw.bgColor || DEFAULT_BG_COLOR,
     bold: Boolean(raw.bold),
     underline: Boolean(raw.underline),
+    strike: Boolean(raw.strike),
     displayStyle:
       raw.type === "date" || raw.type === "clock"
         ? normalizeDisplayStyle(raw.displayStyle) || DEFAULT_DISPLAY_STYLE
@@ -122,7 +175,10 @@ function hydrateWidget(raw) {
     const phrases = Array.isArray(raw.announcement?.phrases)
       ? raw.announcement.phrases.map(hydrateAnnouncementItem).filter(Boolean)
       : []
-    widget.announcement = createAnnouncementState(items, phrases)
+    const scheduled = Array.isArray(raw.announcement?.scheduled)
+      ? raw.announcement.scheduled.map(hydrateScheduledAnnouncement).filter(Boolean)
+      : []
+    widget.announcement = createAnnouncementState(items, phrases, scheduled)
   }
   if (widget.type === "dday") {
     widget.dday = createDdayState(raw.dday)

@@ -4,6 +4,7 @@ import { fontFamilyCss } from "../constants/fonts"
 import { DEFAULT_TEXT_COLOR } from "../constants/palette"
 import ColorSwatches from "./ColorSwatches"
 import { contentColor } from "../theme/displayColor"
+import { textDecorationCss } from "../utils/editorStyle"
 import { useTheme } from "../theme/ThemeProvider"
 import SettingsModal from "./SettingsModal"
 import WidgetSettings from "./WidgetSettings"
@@ -69,7 +70,7 @@ function textStyleFrom(style, theme, settled = false, textScale = 1) {
     fontSize: `${Number(style.fontSize) * textScale}pt`,
     fontWeight: style.bold ? 700 : 400,
     color: inkFrom(style.textColor, theme, settled),
-    textDecoration: settled ? "none" : style.underline ? "underline" : "none",
+    textDecoration: settled ? "none" : textDecorationCss(style.underline, style.strike),
     textUnderlineOffset: style.underline && !settled ? "0.16em" : undefined,
     lineHeight: textScale > 1 ? 1.2 : 1.35,
   }
@@ -211,6 +212,7 @@ export function CheckboardSettings({ widget, onChange }) {
     if (patch.textColor != null) itemPatch.color = patch.textColor
     if (patch.bold != null) itemPatch.bold = patch.bold
     if (patch.underline != null) itemPatch.underline = patch.underline
+    if (patch.strike != null) itemPatch.strike = patch.strike
     if (!Object.keys(itemPatch).length) return
     updateBoard({ items: patchCheckItem(board.items, selected.id, itemPatch) })
   }
@@ -228,6 +230,7 @@ export function CheckboardSettings({ widget, onChange }) {
                   textColor: selectedStyle.textColor,
                   bold: selectedStyle.bold,
                   underline: selectedStyle.underline,
+                  strike: selectedStyle.strike,
                 }
               : widget
           }
@@ -515,7 +518,7 @@ export default function CheckboardWidget({ widget, onChange, addItemOpen, onClos
   const empty = students.length === 0 || shownItems.length === 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       {cloud.linked && cloud.error && (
         <p className="shrink-0 border-b border-line px-3 py-1.5 text-[12px] text-muted">{cloud.error}</p>
       )}
@@ -527,10 +530,10 @@ export default function CheckboardWidget({ widget, onChange, addItemOpen, onClos
             </p>
           </div>
         ) : (
-          <table className="w-max max-w-full border-collapse">
+          <table className="w-max border-collapse">
             <thead className="sticky top-0 z-[1] bg-widget">
               <tr ref={reorder.listRef}>
-                <th className="w-px border-b border-line py-1.5 pr-2 pl-3" />
+                <th className="w-px border-b border-line py-1.5 pr-1.5 pl-2" />
                 {shownItems.map((item, index) => {
                   const dragging = reorder.dragId === item.id
                   const showLeft = reorder.dropSlot === index && reorder.dragId && reorder.dragId !== item.id
@@ -572,7 +575,7 @@ export default function CheckboardWidget({ widget, onChange, addItemOpen, onClos
                     style={settled ? { color: inkFrom(widget.textColor, theme, true) } : undefined}
                   >
                     <td
-                      className="w-px border-b border-line py-0.5 pr-2 pl-3 whitespace-nowrap"
+                      className="w-px border-b border-line py-0.5 pr-1.5 pl-2 whitespace-nowrap"
                       style={rowStyle}
                     >
                       {student.name}

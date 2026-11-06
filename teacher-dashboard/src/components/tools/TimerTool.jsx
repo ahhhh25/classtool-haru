@@ -6,7 +6,7 @@ import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR, widgetBackground } from "../../co
 import { contentColor } from "../../theme/displayColor"
 import { useTheme } from "../../theme/ThemeProvider"
 import { loadJson, saveJson } from "../../utils/safeStorage"
-import { parseStoredSize, resolveFontId } from "../../utils/editorStyle"
+import { parseStoredSize, resolveFontId, textDecorationCss } from "../../utils/editorStyle"
 import { createTimerAudio } from "../../utils/timerAudio"
 import { SFX_VOLUME_STEPS, clampSfxVolume, loadSfxVolume, TIMER_PREFS_KEY } from "../../utils/sfxVolume"
 import { isHaruReceiver, subscribeSync, SYNC, syncSend } from "../../utils/syncChannel"
@@ -73,6 +73,7 @@ function emptyCaption() {
     textColor: DEFAULT_TEXT_COLOR,
     bold: true,
     underline: false,
+    strike: false,
     textAlign: "center",
     bgColor: DEFAULT_BG_COLOR,
   }
@@ -90,6 +91,7 @@ function loadCaptionPrefs() {
     textColor: raw.textColor || DEFAULT_TEXT_COLOR,
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
+    strike: Boolean(raw.strike),
     textAlign: align,
     bgColor: raw.bgColor || DEFAULT_BG_COLOR,
   }
@@ -106,6 +108,7 @@ function hydrateCaption(raw) {
     textColor: raw.textColor || DEFAULT_TEXT_COLOR,
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
+    strike: Boolean(raw.strike),
     textAlign: align,
     bgColor: raw.bgColor || DEFAULT_BG_COLOR,
   }
@@ -631,7 +634,7 @@ export default function TimerTool() {
                   fontSize: `${Number(caption.fontSize)}pt`,
                   fontWeight: caption.bold ? 700 : 400,
                   color: contentColor(caption.textColor, theme),
-                  textDecoration: caption.underline ? "underline" : "none",
+                  textDecoration: textDecorationCss(caption.underline, caption.strike),
                   textUnderlineOffset: caption.underline ? "0.16em" : undefined,
                   textAlign: caption.textAlign || "center",
                   backgroundColor: captionBg || undefined,

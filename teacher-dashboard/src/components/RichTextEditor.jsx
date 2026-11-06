@@ -6,6 +6,7 @@ import {
   restoreSelection,
   syncRunsWithPlain,
 } from "../utils/richText"
+import { textDecorationCss } from "../utils/editorStyle"
 
 export function runStyle(run, theme, scale = 1) {
   return {
@@ -13,7 +14,7 @@ export function runStyle(run, theme, scale = 1) {
     fontSize: `${Number(run.fontSize) * scale}pt`,
     fontWeight: run.bold ? 700 : 400,
     color: contentColor(run.color, theme),
-    textDecoration: run.underline ? "underline" : "none",
+    textDecoration: textDecorationCss(run.underline, run.strike),
     textUnderlineOffset: run.underline ? "0.16em" : undefined,
     lineHeight: 1.35,
   }
@@ -150,7 +151,8 @@ export default function RichTextEditor({
         if (
           insertStyleRef.current &&
           (insertStyleRef.current.bold !== undefined ||
-            insertStyleRef.current.underline !== undefined)
+            insertStyleRef.current.underline !== undefined ||
+            insertStyleRef.current.strike !== undefined)
         ) {
           onInsertStyleConsumedRef.current?.()
         }

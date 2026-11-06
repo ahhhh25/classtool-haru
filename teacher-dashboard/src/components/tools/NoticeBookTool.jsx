@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Copy, Maximize2, Save, Settings, Trash2, Upload, X } from "lucide-react"
-import { DEFAULT_FONT } from "../../constants/fonts"
+import { DEFAULT_FONT, NOTICE_FONT_SIZE_PRESETS } from "../../constants/fonts"
 import { DEFAULT_TEXT_COLOR } from "../../constants/palette"
 import { useTheme } from "../../theme/ThemeProvider"
 import LineHeightControl from "../LineHeightControl"
@@ -26,6 +26,21 @@ import WidgetSettings from "../WidgetSettings"
 const NOTICES_KEY = "edu_notices_v1"
 const PUBLISH_URL_KEY = "edu_notice_publish_url"
 const AUTO_DELETE_KEY = "edu_notices_auto_delete_v1"
+const FONT_SIZE_KEY = "edu_notices_font_size_v1"
+const DEFAULT_NOTICE_FONT_SIZE = 70
+
+function loadNoticeFontSize() {
+  const stored = loadJson(FONT_SIZE_KEY, null)
+  if (stored == null) return DEFAULT_NOTICE_FONT_SIZE
+  const size = parseStoredSize(stored, DEFAULT_NOTICE_FONT_SIZE)
+  return size >= 12 && size <= 100 ? size : DEFAULT_NOTICE_FONT_SIZE
+}
+
+function saveNoticeFontSize(value) {
+  const size = parseStoredSize(value, DEFAULT_NOTICE_FONT_SIZE)
+  if (size < 12 || size > 100) return
+  saveJson(FONT_SIZE_KEY, size)
+}
 
 function normalizeUrl(raw) {
   const trimmed = String(raw ?? "").trim()
@@ -39,11 +54,12 @@ function emptyNotice() {
     title: todayNoticeTitle(),
     content: "",
     fontFamily: DEFAULT_FONT.id,
-    fontSize: 50,
+    fontSize: loadNoticeFontSize(),
     lineHeight: "normal",
     textColor: DEFAULT_TEXT_COLOR,
     bold: false,
     underline: false,
+    strike: false,
     noticeDate: kstDateKey(),
     kept: false,
     updatedAt: new Date().toISOString(),
@@ -57,10 +73,11 @@ function hydrateNotice(raw) {
     ...raw,
     id: String(raw.id || `notice-${Date.now()}`),
     fontFamily: resolveFontId(raw.fontFamily),
-    fontSize: parseStoredSize(raw.fontSize, 50),
+    fontSize: parseStoredSize(raw.fontSize, DEFAULT_NOTICE_FONT_SIZE),
     textColor: raw.textColor || raw.color || DEFAULT_TEXT_COLOR,
     bold: raw.bold !== false,
     underline: Boolean(raw.underline),
+    strike: Boolean(raw.strike),
     lineHeight: raw.lineHeight || "normal",
     noticeDate: inferNoticeDate(raw) || kstDateKey(),
     kept: false,
@@ -92,7 +109,7 @@ export default function NoticeBookTool() {
   const [copyLabel, setCopyLabel] = useState("복사")
   const [saveLabel, setSaveLabel] = useState("저장")
   const [autoDelete, setAutoDelete] = useState(() => Boolean(loadJson(AUTO_DELETE_KEY, false)))
-  const [oneShotMarks, setOneShotMarks] = useState({ bold: false, underline: false })
+  const [oneShotMarks, setOneShotMarks] = useState({ bold: false, underline: false, strike: false })
   const oneShotRef = useRef(oneShotMarks)
   oneShotRef.current = oneShotMarks
   const [publishOpen, setPublishOpen] = useState(false)
@@ -290,10 +307,11 @@ export default function NoticeBookTool() {
 
   const consumeOneShot = () => {
     const marks = oneShotRef.current
-    if (!marks.bold && !marks.underline) return
+    if (!marks.bold && !marks.underline && !marks.strike) return
     if (marks.bold && document.queryCommandState("bold")) document.execCommand("bold")
     if (marks.underline && document.queryCommandState("underline")) document.execCommand("underline")
-    setOneShotMarks({ bold: false, underline: false })
+    if (marks.strike && document.queryCommandState("strikeThrough")) document.execCommand("strikeThrough")
+    setOneShotMarks({ bold: false, underline: false, strike: false })
   }
 
   const rememberSelection = () => {
@@ -306,22 +324,25 @@ export default function NoticeBookTool() {
   }
 
   const patchStyle = (patch) => {
+    if (patch.fontSize != null) saveNoticeFontSize(patch.fontSize)
     const editor = editorRef.current
     rememberSelection()
     const appliedToSelection = applyEditorPatch(editor, patch, theme, savedRange.current, {
       lineHeight: activeNotice?.lineHeight,
     })
     const persistPatch = { ...patch }
-    if (patch.bold != null || patch.underline != null) {
-      if (appliedToSelection) setOneShotMarks({ bold: false, underline: false })
+    if (patch.bold != null || patch.underline != null || patch.strike != null) {
+      if (appliedToSelection) setOneShotMarks({ bold: false, underline: false, strike: false })
       else {
         setOneShotMarks((current) => ({
           bold: patch.bold ?? current.bold,
           underline: patch.underline ?? current.underline,
+          strike: patch.strike ?? current.strike,
         }))
       }
       delete persistPatch.bold
       delete persistPatch.underline
+      delete persistPatch.strike
     }
     persist(
       noticesRef.current.map((item) =>
@@ -494,11 +515,13 @@ export default function NoticeBookTool() {
             <WidgetSettings
               bare
               inline
+              sizePresets={NOTICE_FONT_SIZE_PRESETS}
               widget={{
                 fontFamily: activeNotice?.fontFamily ?? DEFAULT_FONT.id,
-                fontSize: activeNotice?.fontSize ?? 50,
+                fontSize: activeNotice?.fontSize ?? loadNoticeFontSize(),
                 bold: oneShotMarks.bold,
                 underline: oneShotMarks.underline,
+                strike: oneShotMarks.strike,
                 textColor: activeNotice?.textColor ?? DEFAULT_TEXT_COLOR,
               }}
               onChange={patchStyle}

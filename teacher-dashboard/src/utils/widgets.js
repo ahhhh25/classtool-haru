@@ -28,7 +28,7 @@ export const WIDGET_PRESETS = {
     fontSize: 20,
     w: 4,
     h: 10,
-    minW: 3,
+    minW: 1,
     minH: 2,
   },
   date: {
@@ -71,6 +71,7 @@ function chromeFromPreset(type, id) {
     bgColor: DEFAULT_BG_COLOR,
     bold: type === "dday",
     underline: false,
+    strike: false,
     displayStyle: type === "date" || type === "clock" ? DEFAULT_DISPLAY_STYLE : undefined,
   }
 }

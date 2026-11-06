@@ -1,4 +1,4 @@
-import { AlignCenter, AlignLeft, AlignRight, Bold, Underline } from "lucide-react"
+import { AlignCenter, AlignLeft, AlignRight, Bold, Strikethrough, Underline } from "lucide-react"
 import { FONT_OPTIONS, FONT_SIZE_PRESETS } from "../constants/fonts"
 import { DEFAULT_BG_COLOR, DEFAULT_TEXT_COLOR } from "../constants/palette"
 import ColorSwatches from "./ColorSwatches"
@@ -19,6 +19,7 @@ export default function WidgetSettings({
   inline = false,
   endSlot = null,
   fields = null,
+  sizePresets = FONT_SIZE_PRESETS,
 }) {
   const controlHeight = bare ? "h-7" : "h-9"
   const control =
@@ -34,10 +35,10 @@ export default function WidgetSettings({
       onChange={(event) => onChange({ fontSize: Number(event.target.value) })}
       className={`${control} w-[76px]`}
     >
-      {!FONT_SIZE_PRESETS.includes(widget.fontSize) && (
+      {!sizePresets.includes(widget.fontSize) && (
         <option value={widget.fontSize}>{widget.fontSize} pt</option>
       )}
-      {FONT_SIZE_PRESETS.map((size) => (
+      {sizePresets.map((size) => (
         <option key={size} value={size}>
           {size} pt
         </option>
@@ -89,6 +90,20 @@ export default function WidgetSettings({
         }`}
       >
         <Underline size={iconSize} strokeWidth={1.5} />
+      </button>
+      <button
+        type="button"
+        aria-pressed={widget.strike}
+        aria-label="취소선"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onChange({ strike: !widget.strike })}
+        className={`flex ${iconButton} items-center justify-center rounded-md border transition-colors ${
+          widget.strike
+            ? "border-line-strong bg-active text-ink"
+            : "border-line text-icon hover:bg-hover"
+        }`}
+      >
+        <Strikethrough size={iconSize} strokeWidth={1.5} />
       </button>
     </div>
   )

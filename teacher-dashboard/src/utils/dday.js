@@ -24,6 +24,7 @@ export function createDdayState(raw = {}) {
     titleTextColor: raw.titleTextColor || DEFAULT_TEXT_COLOR,
     titleBold: Boolean(raw.titleBold),
     titleUnderline: Boolean(raw.titleUnderline),
+    titleStrike: Boolean(raw.titleStrike),
   }
 }
 
@@ -34,6 +35,7 @@ export function ddayTitleAsWidget(dday) {
     textColor: dday.titleTextColor,
     bold: dday.titleBold,
     underline: dday.titleUnderline,
+    strike: dday.titleStrike,
   }
 }
 
@@ -45,6 +47,7 @@ export function applyDdayTitlePatch(dday, patch) {
     ...(patch.textColor != null ? { titleTextColor: patch.textColor } : {}),
     ...(patch.bold != null ? { titleBold: patch.bold } : {}),
     ...(patch.underline != null ? { titleUnderline: patch.underline } : {}),
+    ...(patch.strike != null ? { titleStrike: patch.strike } : {}),
   })
 }
 

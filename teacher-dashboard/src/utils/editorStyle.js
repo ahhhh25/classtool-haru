@@ -41,6 +41,13 @@ function lineHeightPxFromStyle(editor, size) {
   return Math.max(1, Math.round(size * (Number.isFinite(ratio) ? ratio : 1.6)))
 }
 
+export function textDecorationCss(underline, strike) {
+  const marks = []
+  if (underline) marks.push("underline")
+  if (strike) marks.push("line-through")
+  return marks.length ? marks.join(" ") : "none"
+}
+
 export function applyLineHeight(editor, value) {
   if (!editor) return
   const size = editorFontPx(editor)
@@ -72,7 +79,7 @@ export function applyBaseEditorStyle(editor, style, theme, { lined = false } = {
   editor.style.fontFamily = fontFamilyCss(fontId)
   editor.style.fontSize = `${size}pt`
   editor.style.fontWeight = style.bold ? "700" : "400"
-  editor.style.textDecoration = style.underline ? "underline" : "none"
+  editor.style.textDecoration = textDecorationCss(style.underline, style.strike)
   editor.style.color = contentColor(style.textColor || DEFAULT_TEXT_COLOR, theme)
   applyLineHeight(editor, style.lineHeight || "normal")
   if (lined) {
@@ -200,6 +207,18 @@ export function applyEditorPatch(editor, patch, theme, savedRange, { lined = fal
     else if (Boolean(document.queryCommandState("underline")) !== Boolean(patch.underline)) {
       document.execCommand("underline")
     }
+  }
+  if (patch.strike != null) {
+    if (hasSelection) document.execCommand("strikeThrough")
+    else if (Boolean(document.queryCommandState("strikeThrough")) !== Boolean(patch.strike)) {
+      document.execCommand("strikeThrough")
+    }
+  }
+  if (!hasSelection && (patch.underline != null || patch.strike != null)) {
+    const decoration = editor.style.textDecoration || ""
+    const underline = patch.underline ?? /underline/.test(decoration)
+    const strike = patch.strike ?? /line-through/.test(decoration)
+    editor.style.textDecoration = textDecorationCss(underline, strike)
   }
 
   return hasSelection

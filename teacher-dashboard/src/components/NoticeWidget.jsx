@@ -7,6 +7,7 @@ import { useTheme } from "../theme/ThemeProvider"
 import WidgetSettings from "./WidgetSettings"
 import RichTextEditor from "./RichTextEditor"
 import { getComposeFontSize, setComposeFontSize } from "../utils/composeFontSize"
+import { textDecorationCss } from "../utils/editorStyle"
 import {
   applyStyleToRange,
   createDraftSlot,
@@ -57,7 +58,7 @@ function RichNoticeText({ runs, selectable, onSelectionChange, theme, textScale 
             fontSize: `${Number(run.fontSize) * textScale}pt`,
             fontWeight: run.bold ? 700 : 400,
             color: contentColor(run.color, theme),
-            textDecoration: run.underline ? "underline" : "none",
+            textDecoration: textDecorationCss(run.underline, run.strike),
             textUnderlineOffset: run.underline ? "0.16em" : undefined,
           }}
         >
@@ -127,11 +128,13 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
     textColor: widget.textColor,
     bold: false,
     underline: false,
+    strike: false,
   })
   const toolbarFallback = {
     ...runToolbar,
     bold: selection ? runToolbar.bold : Boolean(oneShotMarks?.bold),
     underline: selection ? runToolbar.underline : Boolean(oneShotMarks?.underline),
+    strike: selection ? runToolbar.strike : Boolean(oneShotMarks?.strike),
   }
 
   const updateNotice = (patch, extra = {}) => {
@@ -145,10 +148,11 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
 
   const applySettings = (patch) => {
     if (patch.fontSize != null) setComposeFontSize(patch.fontSize)
-    const oneShot = patch.bold != null || patch.underline != null
+    const oneShot = patch.bold != null || patch.underline != null || patch.strike != null
     const sticky = { ...patch }
     delete sticky.bold
     delete sticky.underline
+    delete sticky.strike
     if (Object.keys(sticky).length) onChange(sticky)
 
     const runPatch = widgetPatchToRunPatch(patch)
@@ -160,7 +164,7 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
       const styled = applyStyleToRange(currentRuns, range.start, range.end, runPatch)
       if (notice.mode === "manual") setManualDraftRuns(styled)
       else setDraftRuns(styled)
-      if (oneShot) setOneShotMarks({ bold: false, underline: false })
+      if (oneShot) setOneShotMarks({ bold: false, underline: false, strike: false })
       return
     }
 
@@ -168,6 +172,7 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
       setOneShotMarks((current) => ({
         bold: patch.bold ?? current?.bold ?? false,
         underline: patch.underline ?? current?.underline ?? false,
+        strike: patch.strike ?? current?.strike ?? false,
       }))
     }
 
@@ -463,6 +468,7 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
                 color: widget.textColor,
                 bold: Boolean(oneShotMarks?.bold),
                 underline: Boolean(oneShotMarks?.underline),
+                strike: Boolean(oneShotMarks?.strike),
               }}
               theme={theme}
               ariaLabel="공지 내용"
@@ -473,7 +479,7 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
               onChangeRuns={setDraftRuns}
               flushRef={editorFlushRef}
               insertStyle={oneShotMarks}
-              onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false })}
+              onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false, strike: false })}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault()
@@ -569,6 +575,7 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
                 color: widget.textColor,
                 bold: Boolean(oneShotMarks?.bold),
                 underline: Boolean(oneShotMarks?.underline),
+                strike: Boolean(oneShotMarks?.strike),
               }}
               theme={theme}
               ariaLabel="공지 내용"
@@ -579,7 +586,7 @@ export function NoticeSettings({ widget, onChange, previewWidth = 0, textScale =
               onChangeRuns={setManualDraftRuns}
               flushRef={editorFlushRef}
               insertStyle={oneShotMarks}
-              onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false })}
+              onInsertStyleConsumed={() => setOneShotMarks({ bold: false, underline: false, strike: false })}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault()

@@ -11,6 +11,8 @@ export const DEFAULT_FONT = FONT_OPTIONS[0]
 
 export const FONT_SIZE_PRESETS = Array.from({ length: 35 }, (_, i) => 12 + i * 2)
 
+export const NOTICE_FONT_SIZE_PRESETS = Array.from({ length: 45 }, (_, i) => 12 + i * 2)
+
 export function fontFamilyCss(fontId) {
   return FONT_OPTIONS.find((font) => font.id === fontId)?.cssFamily ?? DEFAULT_FONT.cssFamily
 }
