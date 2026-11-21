@@ -38,8 +38,79 @@ function isPrivateLan(ip) {
   return second >= 16 && second <= 31
 }
 
+function haruSyncPlugin() {
+  const clients = new Set()
+  const broadcast = (text) => {
+    for (const res of clients) {
+      try {
+        res.write(`data: ${text}\n\n`)
+      } catch {
+        clients.delete(res)
+      }
+    }
+  }
+  const handle = (req, res, next) => {
+    const url = req.url?.split('?')[0]
+    if (url !== '/__haru_sync') {
+      next()
+      return
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204
+      res.end()
+      return
+    }
+    if (req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      })
+      res.write(': ok\n\n')
+      clients.add(res)
+      const ping = setInterval(() => {
+        try {
+          res.write(': ping\n\n')
+        } catch {
+          clearInterval(ping)
+          clients.delete(res)
+        }
+      }, 15000)
+      req.on('close', () => {
+        clearInterval(ping)
+        clients.delete(res)
+      })
+      return
+    }
+    if (req.method === 'POST') {
+      const chunks = []
+      req.on('data', (chunk) => chunks.push(chunk))
+      req.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8')
+        if (text) broadcast(text)
+        res.statusCode = 204
+        res.end()
+      })
+      return
+    }
+    next()
+  }
+  return {
+    name: 'haru-sync',
+    configureServer(server) {
+      server.middlewares.use(handle)
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(handle)
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), haruSyncPlugin()],
   server: {
     host: true,
   },

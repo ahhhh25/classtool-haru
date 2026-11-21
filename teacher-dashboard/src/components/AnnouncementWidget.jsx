@@ -23,7 +23,14 @@ import {
   toScheduledItem,
   toVisibleItem,
 } from "../utils/announcement"
-import { isHaruReceiver } from "../utils/syncChannel"
+import {
+  isHaruReceiver,
+  persistAnnouncementFocus,
+  persistWidgetFocus,
+  readAnnouncementFocus,
+  subscribeSync,
+  SYNC,
+} from "../utils/syncChannel"
 import { getComposeFontSize, setComposeFontSize } from "../utils/composeFontSize"
 import {
   applyStyleToRange,
@@ -241,18 +248,19 @@ function AnnouncementItemFrame({ item, theme, textScale = 1, trailing = null }) 
   )
 }
 
-function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose }) {
+function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose, inert = false }) {
   const stageRef = useRef(null)
   const boxRef = useRef(null)
   const [scale, setScale] = useState(1)
 
   useEffect(() => {
+    if (inert) return undefined
     const onKeyDown = (event) => {
       if (event.key === "Escape") onClose()
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [onClose])
+  }, [inert, onClose])
 
   useLayoutEffect(() => {
     const stage = stageRef.current
@@ -275,7 +283,7 @@ function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose }) {
   const width = sourceWidth || undefined
 
   return (
-    <FocusMode onClose={onClose}>
+    <FocusMode inert={inert} onClose={onClose}>
       <div className="flex h-full flex-col">
         <header className="relative z-10 flex h-9 shrink-0 items-center justify-end px-1.5">
           <button
@@ -666,7 +674,11 @@ export default function AnnouncementWidget({
   const scheduled = Array.isArray(board.scheduled) ? board.scheduled : []
   const scheduledSorted = [...scheduled].sort((a, b) => (scheduledAtMs(a) ?? 0) - (scheduledAtMs(b) ?? 0))
   const [editor, setEditor] = useState(null)
-  const [focus, setFocus] = useState(null)
+  const [focus, setFocus] = useState(() => {
+    const saved = readAnnouncementFocus()
+    if (saved?.widgetId !== widget.id || !saved.itemId) return null
+    return { id: saved.itemId, width: saved.width || 0 }
+  })
   const focusedItem = board.items.find((item) => item.id === focus?.id) ?? null
   const [dragId, setDragId] = useState(null)
   const [dropSlot, setDropSlot] = useState(null)
@@ -696,6 +708,25 @@ export default function AnnouncementWidget({
       document.removeEventListener("visibilitychange", onVisible)
     }
   }, [isReceiver])
+
+  useEffect(() => {
+    return subscribeSync((msg) => {
+      if (msg.type !== SYNC.ANNOUNCEMENT_FOCUS) return
+      const payload = msg.payload || {}
+      if (payload.widgetId === widget.id && payload.itemId) {
+        setFocus({ id: payload.itemId, width: Number(payload.width) || 0 })
+        return
+      }
+      setFocus(null)
+    })
+  }, [widget.id])
+
+  useEffect(() => {
+    if (!focus?.id) return
+    if (board.items.some((item) => item.id === focus.id)) return
+    setFocus(null)
+    if (!isReceiver) persistAnnouncementFocus(null)
+  }, [board.items, focus?.id, isReceiver])
 
   useEffect(() => {
     if (!addItemOpen) {
@@ -885,6 +916,14 @@ export default function AnnouncementWidget({
                           const row = event.currentTarget.closest("[data-announcement-id]")
                           const width = row?.getBoundingClientRect().width ?? 0
                           setFocus({ id: item.id, width })
+                          if (!isReceiver) {
+                            persistWidgetFocus(null)
+                            persistAnnouncementFocus({
+                              widgetId: widget.id,
+                              itemId: item.id,
+                              width,
+                            })
+                          }
                         }}
                         className={itemActionBtn}
                       >
@@ -936,7 +975,11 @@ export default function AnnouncementWidget({
           theme={theme}
           textScale={textScale}
           sourceWidth={focus?.width ?? 0}
-          onClose={() => setFocus(null)}
+          inert={isReceiver}
+          onClose={() => {
+            setFocus(null)
+            if (!isReceiver) persistAnnouncementFocus(null)
+          }}
         />
       )}
 

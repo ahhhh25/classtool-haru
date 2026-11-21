@@ -15,6 +15,7 @@ export default function FocusMode({ onClose, children, inert = false }) {
       className={`fixed inset-0 z-[10050] flex items-center justify-center p-3 ${
         inert ? "pointer-events-none" : ""
       }`}
+      style={{ zIndex: 10050 }}
     >
       <button
         type="button"

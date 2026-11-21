@@ -1,11 +1,14 @@
 const CHANNEL_NAME = "haru-sync"
 const WIDGET_FOCUS_KEY = "classtool-widget-focus"
+const ANNOUNCEMENT_FOCUS_KEY = "classtool-announcement-focus"
+const RELAY_PATH = "/__haru_sync"
 const RECENT_ID_LIMIT = 80
 
 export const SYNC = {
   VIEW_CHANGE: "VIEW_CHANGE",
   STATE_REQUEST: "STATE_REQUEST",
   WIDGET_FOCUS: "WIDGET_FOCUS",
+  ANNOUNCEMENT_FOCUS: "ANNOUNCEMENT_FOCUS",
   PICKER_DRAW_START: "PICKER_DRAW_START",
   PICKER_RESULT: "PICKER_RESULT",
   PICKER_RESET: "PICKER_RESET",
@@ -52,6 +55,7 @@ const listeners = new Set()
 
 let channel = null
 let storageBound = false
+let relayBound = false
 
 function emitToListeners(msg) {
   listeners.forEach((handler) => {
@@ -63,6 +67,13 @@ function emitToListeners(msg) {
   })
 }
 
+function ingestRemoteMessage(msg) {
+  if (!msg || typeof msg !== "object") return
+  if (msg.sourceId === sourceId) return
+  if (msg.messageId && !rememberMessageId(msg.messageId)) return
+  emitToListeners(msg)
+}
+
 export function readWidgetFocus() {
   try {
     const raw = JSON.parse(window.localStorage.getItem(WIDGET_FOCUS_KEY) || "null")
@@ -70,6 +81,16 @@ export function readWidgetFocus() {
   } catch {
     return null
   }
+}
+
+function emitWidgetFocus(widgetId) {
+  emitToListeners({
+    type: SYNC.WIDGET_FOCUS,
+    payload: { widgetId },
+    sourceId: "local",
+    messageId: `local-widget-focus-${Date.now()}`,
+    timestamp: Date.now(),
+  })
 }
 
 export function persistWidgetFocus(widgetId) {
@@ -81,6 +102,47 @@ export function persistWidgetFocus(widgetId) {
     /* ignore quota / private mode */
   }
   syncSend(SYNC.WIDGET_FOCUS, { widgetId: id })
+  emitWidgetFocus(id)
+}
+
+export function readAnnouncementFocus() {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(ANNOUNCEMENT_FOCUS_KEY) || "null")
+    const widgetId = typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
+    const itemId = typeof raw?.itemId === "string" && raw.itemId ? raw.itemId : null
+    if (!widgetId || !itemId) return null
+    return {
+      widgetId,
+      itemId,
+      width: Number(raw.width) || 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function persistAnnouncementFocus(focus) {
+  if (isHaruReceiver()) return
+  const widgetId = typeof focus?.widgetId === "string" && focus.widgetId ? focus.widgetId : null
+  const itemId = typeof focus?.itemId === "string" && focus.itemId ? focus.itemId : null
+  const width = Number(focus?.width) || 0
+  const payload = { widgetId, itemId, width }
+  try {
+    window.localStorage.setItem(
+      ANNOUNCEMENT_FOCUS_KEY,
+      JSON.stringify({ ...payload, at: Date.now() }),
+    )
+  } catch {
+    /* ignore quota / private mode */
+  }
+  syncSend(SYNC.ANNOUNCEMENT_FOCUS, payload)
+  emitToListeners({
+    type: SYNC.ANNOUNCEMENT_FOCUS,
+    payload,
+    sourceId: "local",
+    messageId: `local-announcement-focus-${Date.now()}`,
+    timestamp: Date.now(),
+  })
 }
 
 function rememberMessageId(id) {
@@ -99,35 +161,85 @@ function bindStorageSync() {
   if (storageBound || typeof window === "undefined") return
   storageBound = true
   window.addEventListener("storage", (event) => {
-    if (event.key !== WIDGET_FOCUS_KEY) return
-    let widgetId = null
+    if (event.key === WIDGET_FOCUS_KEY) {
+      let widgetId = null
+      try {
+        const raw = JSON.parse(event.newValue || "null")
+        widgetId = typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
+      } catch {
+        widgetId = null
+      }
+      emitToListeners({
+        type: SYNC.WIDGET_FOCUS,
+        payload: { widgetId },
+        sourceId: "storage",
+        messageId: `storage-focus-${Date.now()}`,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if (event.key !== ANNOUNCEMENT_FOCUS_KEY) return
+    let payload = { widgetId: null, itemId: null, width: 0 }
     try {
       const raw = JSON.parse(event.newValue || "null")
-      widgetId = typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
+      payload = {
+        widgetId: typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null,
+        itemId: typeof raw?.itemId === "string" && raw.itemId ? raw.itemId : null,
+        width: Number(raw?.width) || 0,
+      }
     } catch {
-      widgetId = null
+      payload = { widgetId: null, itemId: null, width: 0 }
     }
     emitToListeners({
-      type: SYNC.WIDGET_FOCUS,
-      payload: { widgetId },
+      type: SYNC.ANNOUNCEMENT_FOCUS,
+      payload,
       sourceId: "storage",
-      messageId: `storage-focus-${Date.now()}`,
+      messageId: `storage-announcement-focus-${Date.now()}`,
       timestamp: Date.now(),
     })
   })
 }
 
+function bindRelaySync() {
+  if (relayBound || typeof window === "undefined" || typeof EventSource === "undefined") return
+  relayBound = true
+  try {
+    const stream = new EventSource(RELAY_PATH)
+    stream.onmessage = (event) => {
+      let msg = null
+      try {
+        msg = JSON.parse(event.data)
+      } catch {
+        return
+      }
+      ingestRemoteMessage(msg)
+    }
+  } catch {
+    /* preview / static hosts without the Vite relay */
+  }
+}
+
+function postRelay(msg) {
+  try {
+    fetch(RELAY_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(msg),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    /* ignore */
+  }
+}
+
 function getChannel() {
   bindStorageSync()
+  bindRelaySync()
   if (typeof BroadcastChannel === "undefined") return null
   if (!channel) {
     channel = new BroadcastChannel(CHANNEL_NAME)
     channel.onmessage = (event) => {
-      const msg = event.data
-      if (!msg || typeof msg !== "object") return
-      if (msg.sourceId === sourceId) return
-      if (msg.messageId && !rememberMessageId(msg.messageId)) return
-      emitToListeners(msg)
+      ingestRemoteMessage(event.data)
     }
   }
   return channel
@@ -135,15 +247,17 @@ function getChannel() {
 
 export function syncSend(type, payload = {}) {
   if (isHaruReceiver() && type !== SYNC.STATE_REQUEST) return
-  const ch = getChannel()
-  if (!ch || !type) return
-  ch.postMessage({
+  if (!type) return
+  getChannel()
+  const msg = {
     type,
     payload,
     sourceId,
     messageId: newId(),
     timestamp: Date.now(),
-  })
+  }
+  if (channel) channel.postMessage(msg)
+  postRelay(msg)
 }
 
 export function subscribeSync(handler) {

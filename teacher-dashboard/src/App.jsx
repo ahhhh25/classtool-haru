@@ -20,7 +20,7 @@ import {
   loadDashboard,
   saveDashboard,
 } from "./utils/dashboardStore"
-import { isHaruReceiver, persistWidgetFocus, readWidgetFocus, subscribeSync, SYNC, syncSend, scheduleDashboardSync, flushDashboardSync } from "./utils/syncChannel"
+import { isHaruReceiver, persistAnnouncementFocus, persistWidgetFocus, readAnnouncementFocus, readWidgetFocus, subscribeSync, SYNC, syncSend, scheduleDashboardSync, flushDashboardSync } from "./utils/syncChannel"
 import { createLayoutItem, createWidget, mergeLayoutChange } from "./utils/widgets"
 
 export default function App() {
@@ -36,7 +36,7 @@ export default function App() {
   const [layout, setLayout] = useState(saved.layout)
   const [stackOrder, setStackOrder] = useState(saved.stackOrder)
   const [layoutPresets, setLayoutPresets] = useState(saved.layoutPresets ?? [])
-  const [focusedWidgetId, setFocusedWidgetId] = useState(() => (isReceiver ? readWidgetFocus() : null))
+  const [focusedWidgetId, setFocusedWidgetId] = useState(readWidgetFocus)
   const widgetsRef = useRef(widgets)
   widgetsRef.current = widgets
   const focusedWidgetIdRef = useRef(null)
@@ -59,7 +59,9 @@ export default function App() {
       pickerSub: snap.pickerSub,
       pickerGroupMode: snap.pickerGroupMode,
       settingsSub: snap.settingsSub,
-      focusedWidgetId: snap.focusedWidgetId ?? null,
+      focusedWidgetId: Object.hasOwn(overrides, "focusedWidgetId")
+        ? overrides.focusedWidgetId ?? null
+        : focusedWidgetIdRef.current,
     })
   }, [])
 
@@ -75,9 +77,17 @@ export default function App() {
       const next = typeof id === "string" && id ? id : null
       focusedWidgetIdRef.current = next
       setFocusedWidgetId(next)
-      if (!isReceiver) persistWidgetFocus(next)
+      if (next) setActiveView(VIEWS.dashboard)
+      if (!isReceiver) {
+        if (next) persistAnnouncementFocus(null)
+        persistWidgetFocus(next)
+        sendViewSync({
+          view: VIEWS.dashboard,
+          focusedWidgetId: next,
+        })
+      }
     },
-    [isReceiver],
+    [isReceiver, sendViewSync],
   )
 
   useEffect(() => {
@@ -100,10 +110,16 @@ export default function App() {
         if (isReceiver) return
         sendViewSync()
         persistWidgetFocus(focusedWidgetIdRef.current)
+        persistAnnouncementFocus(readAnnouncementFocus())
         return
       }
       if (msg.type === SYNC.WIDGET_FOCUS) {
-        applyRemoteFocus(msg.payload?.widgetId)
+        const id = msg.payload?.widgetId ?? msg.payload?.focusedWidgetId
+        applyRemoteFocus(id)
+        return
+      }
+      if (msg.type === SYNC.ANNOUNCEMENT_FOCUS) {
+        if (msg.payload?.itemId) applyRemoteFocus(null)
         return
       }
       if (msg.type === SYNC.VIEW_CHANGE) {
@@ -253,7 +269,10 @@ export default function App() {
     const nextSettings = view === VIEWS.settings ? "general" : settingsSub
     setActiveView(view)
     if (view === VIEWS.settings) setSettingsSub("general")
-    if (view !== VIEWS.dashboard) setFocus(null)
+    if (view !== VIEWS.dashboard) {
+      setFocus(null)
+      persistAnnouncementFocus(null)
+    }
     sendViewSync({
       view,
       settingsSub: nextSettings,
@@ -265,6 +284,7 @@ export default function App() {
     setPickerSub(id)
     setActiveView(VIEWS.picker)
     setFocus(null)
+    persistAnnouncementFocus(null)
     sendViewSync({
       view: VIEWS.picker,
       pickerSub: id,
@@ -277,6 +297,7 @@ export default function App() {
     setPickerGroupMode(id)
     setActiveView(VIEWS.picker)
     setFocus(null)
+    persistAnnouncementFocus(null)
     sendViewSync({
       view: VIEWS.picker,
       pickerSub: "group",
@@ -341,6 +362,7 @@ export default function App() {
             setActiveView(VIEWS.settings)
             setSettingsSub("students")
             setFocus(null)
+            persistAnnouncementFocus(null)
             sendViewSync({
               view: VIEWS.settings,
               settingsSub: "students",
