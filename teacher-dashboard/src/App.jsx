@@ -20,6 +20,7 @@ import {
   loadDashboard,
   saveDashboard,
 } from "./utils/dashboardStore"
+import SpeechUnlockButton from "./components/SpeechUnlockButton"
 import { isHaruReceiver, persistAnnouncementFocus, persistWidgetFocus, readAnnouncementFocus, readWidgetFocus, subscribeSync, SYNC, syncSend, scheduleDashboardSync, flushDashboardSync } from "./utils/syncChannel"
 import { createLayoutItem, createWidget, mergeLayoutChange } from "./utils/widgets"
 
@@ -110,7 +111,8 @@ export default function App() {
         if (isReceiver) return
         sendViewSync()
         persistWidgetFocus(focusedWidgetIdRef.current)
-        persistAnnouncementFocus(readAnnouncementFocus())
+        const announcementFocus = readAnnouncementFocus()
+        if (announcementFocus) persistAnnouncementFocus(announcementFocus)
         return
       }
       if (msg.type === SYNC.WIDGET_FOCUS) {
@@ -407,6 +409,7 @@ export default function App() {
           />,
           document.body,
         )}
+      <SpeechUnlockButton />
     </div>
   )
 }

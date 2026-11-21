@@ -1,6 +1,8 @@
 const CHANNEL_NAME = "haru-sync"
 const WIDGET_FOCUS_KEY = "classtool-widget-focus"
 const ANNOUNCEMENT_FOCUS_KEY = "classtool-announcement-focus"
+const ANNOUNCEMENT_SPEECH_CMD_KEY = "classtool-announcement-speech-cmd"
+const ANNOUNCEMENT_SPEECH_STATUS_KEY = "classtool-announcement-speech-status"
 const RELAY_PATH = "/__haru_sync"
 const RECENT_ID_LIMIT = 80
 
@@ -9,6 +11,8 @@ export const SYNC = {
   STATE_REQUEST: "STATE_REQUEST",
   WIDGET_FOCUS: "WIDGET_FOCUS",
   ANNOUNCEMENT_FOCUS: "ANNOUNCEMENT_FOCUS",
+  ANNOUNCEMENT_SPEECH: "ANNOUNCEMENT_SPEECH",
+  ANNOUNCEMENT_SPEECH_STATUS: "ANNOUNCEMENT_SPEECH_STATUS",
   PICKER_DRAW_START: "PICKER_DRAW_START",
   PICKER_RESULT: "PICKER_RESULT",
   PICKER_RESET: "PICKER_RESET",
@@ -105,28 +109,70 @@ export function persistWidgetFocus(widgetId) {
   emitWidgetFocus(id)
 }
 
+export function parseAnnouncementFocus(raw) {
+  const widgetId = typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
+  const itemId = typeof raw?.itemId === "string" && raw.itemId ? raw.itemId : null
+  const width = Number(raw?.width) || 0
+  const mode = raw?.mode === "speech" ? "speech" : "manual"
+  const until = Number(raw?.until) || 0
+  const requestId = typeof raw?.requestId === "string" && raw.requestId ? raw.requestId : null
+  if (!widgetId || !itemId) {
+    return { widgetId: null, itemId: null, width: 0, mode: "manual", until: 0, requestId: null }
+  }
+  if (mode === "speech" && until > 0 && until <= Date.now()) {
+    return { widgetId: null, itemId: null, width: 0, mode: "manual", until: 0, requestId: null }
+  }
+  return { widgetId, itemId, width, mode, until, requestId }
+}
+
 export function readAnnouncementFocus() {
   try {
     const raw = JSON.parse(window.localStorage.getItem(ANNOUNCEMENT_FOCUS_KEY) || "null")
-    const widgetId = typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null
-    const itemId = typeof raw?.itemId === "string" && raw.itemId ? raw.itemId : null
-    if (!widgetId || !itemId) return null
-    return {
-      widgetId,
-      itemId,
-      width: Number(raw.width) || 0,
-    }
+    const parsed = parseAnnouncementFocus(raw)
+    if (!parsed.itemId) return null
+    if (parsed.mode === "speech") return null
+    return parsed
   } catch {
     return null
   }
 }
+
+export function persistAnnouncementSpeech(payload) {
+  if (isHaruReceiver()) return
+  const next = { ...payload, at: Date.now() }
+  try {
+    window.localStorage.setItem(ANNOUNCEMENT_SPEECH_CMD_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore quota / private mode */
+  }
+  syncSend(SYNC.ANNOUNCEMENT_SPEECH, next)
+}
+
+export function persistAnnouncementSpeechStatus(payload) {
+  if (isHaruReceiver()) return
+  const next = { ...payload, at: Date.now() }
+  try {
+    window.localStorage.setItem(ANNOUNCEMENT_SPEECH_STATUS_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore quota / private mode */
+  }
+  syncSend(SYNC.ANNOUNCEMENT_SPEECH_STATUS, next)
+}
+
+let lastAnnouncementFocusKey = ""
 
 export function persistAnnouncementFocus(focus) {
   if (isHaruReceiver()) return
   const widgetId = typeof focus?.widgetId === "string" && focus.widgetId ? focus.widgetId : null
   const itemId = typeof focus?.itemId === "string" && focus.itemId ? focus.itemId : null
   const width = Number(focus?.width) || 0
-  const payload = { widgetId, itemId, width }
+  const mode = focus?.mode === "speech" ? "speech" : "manual"
+  const until = Number(focus?.until) || 0
+  const requestId = typeof focus?.requestId === "string" && focus.requestId ? focus.requestId : null
+  const payload = { widgetId, itemId, width, mode, until, requestId }
+  const key = `${widgetId}|${itemId}|${width}|${mode}|${until}|${requestId}`
+  if (key === lastAnnouncementFocusKey) return
+  lastAnnouncementFocusKey = key
   try {
     window.localStorage.setItem(
       ANNOUNCEMENT_FOCUS_KEY,
@@ -178,23 +224,50 @@ function bindStorageSync() {
       })
       return
     }
-    if (event.key !== ANNOUNCEMENT_FOCUS_KEY) return
-    let payload = { widgetId: null, itemId: null, width: 0 }
-    try {
-      const raw = JSON.parse(event.newValue || "null")
-      payload = {
-        widgetId: typeof raw?.widgetId === "string" && raw.widgetId ? raw.widgetId : null,
-        itemId: typeof raw?.itemId === "string" && raw.itemId ? raw.itemId : null,
-        width: Number(raw?.width) || 0,
+    if (event.key === ANNOUNCEMENT_FOCUS_KEY) {
+      let payload = parseAnnouncementFocus(null)
+      try {
+        payload = parseAnnouncementFocus(JSON.parse(event.newValue || "null"))
+      } catch {
+        payload = parseAnnouncementFocus(null)
       }
+      emitToListeners({
+        type: SYNC.ANNOUNCEMENT_FOCUS,
+        payload,
+        sourceId: "storage",
+        messageId: `storage-announcement-focus-${Date.now()}`,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if (event.key === ANNOUNCEMENT_SPEECH_CMD_KEY) {
+      let payload = {}
+      try {
+        payload = JSON.parse(event.newValue || "{}") || {}
+      } catch {
+        payload = {}
+      }
+      emitToListeners({
+        type: SYNC.ANNOUNCEMENT_SPEECH,
+        payload,
+        sourceId: "storage",
+        messageId: `storage-announcement-speech-${Date.now()}`,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if (event.key !== ANNOUNCEMENT_SPEECH_STATUS_KEY) return
+    let payload = {}
+    try {
+      payload = JSON.parse(event.newValue || "{}") || {}
     } catch {
-      payload = { widgetId: null, itemId: null, width: 0 }
+      payload = {}
     }
     emitToListeners({
-      type: SYNC.ANNOUNCEMENT_FOCUS,
+      type: SYNC.ANNOUNCEMENT_SPEECH_STATUS,
       payload,
       sourceId: "storage",
-      messageId: `storage-announcement-focus-${Date.now()}`,
+      messageId: `storage-announcement-speech-status-${Date.now()}`,
       timestamp: Date.now(),
     })
   })
@@ -246,7 +319,9 @@ function getChannel() {
 }
 
 export function syncSend(type, payload = {}) {
-  if (isHaruReceiver() && type !== SYNC.STATE_REQUEST) return
+  if (isHaruReceiver() && type !== SYNC.STATE_REQUEST) {
+    return
+  }
   if (!type) return
   getChannel()
   const msg = {

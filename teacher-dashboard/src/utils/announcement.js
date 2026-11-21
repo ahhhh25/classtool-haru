@@ -21,6 +21,7 @@ export function createAnnouncementItem(style = {}) {
     bold,
     underline,
     strike,
+    autoSpeak: Boolean(style.autoSpeak),
     runs: text
       ? plainToRuns(text, {
           fontFamily,
@@ -264,6 +265,7 @@ export function cloneAnnouncementItem(raw) {
   })
   return {
     ...item,
+    autoSpeak: Boolean(raw?.autoSpeak),
     runs: Array.isArray(raw?.runs) ? raw.runs.map((run) => ({ ...run })) : item.runs,
   }
 }

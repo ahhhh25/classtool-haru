@@ -75,11 +75,13 @@ function hydrateAnnouncementItem(raw) {
   })
   const id = typeof raw.id === "string" && raw.id ? raw.id : item.id
   const expire = hydrateExpireFields(raw)
+  const autoSpeak = Boolean(raw.autoSpeak)
   const base = Array.isArray(raw.runs)
-    ? { ...item, id, bgColor: item.bgColor, runs: raw.runs.filter((run) => run && typeof run.text === "string") }
+    ? { ...item, id, autoSpeak, bgColor: item.bgColor, runs: raw.runs.filter((run) => run && typeof run.text === "string") }
     : {
         ...item,
         id,
+        autoSpeak,
         runs:
           typeof raw.text === "string" && raw.text
             ? plainToRuns(raw.text, {

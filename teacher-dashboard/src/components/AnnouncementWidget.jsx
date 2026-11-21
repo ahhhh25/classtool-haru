@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { CalendarDays, Clock, Maximize2, Minimize2, Plus, Settings, Trash2 } from "lucide-react"
+import { CalendarDays, Clock, Maximize2, Minimize2, Plus, Settings, Trash2, Volume2 } from "lucide-react"
 import { widgetBackground } from "../constants/palette"
 import { contentColor } from "../theme/displayColor"
 import { useTheme } from "../theme/ThemeProvider"
@@ -24,6 +24,19 @@ import {
   toVisibleItem,
 } from "../utils/announcement"
 import {
+  announcementSpeechText,
+  ensureAnnouncementSpeechBridge,
+  readSpeechSettings,
+  requestAnnouncementSpeech,
+  saveSpeechSettings,
+  SPEECH_EXPAND_MS,
+  stopAnnouncementPreview,
+  subscribeAnnouncementPreview,
+  subscribeAnnouncementSpeechStatus,
+  subscribeKoreanVoices,
+  toggleAnnouncementPreview,
+} from "../utils/announcementSpeech"
+import {
   isHaruReceiver,
   persistAnnouncementFocus,
   persistWidgetFocus,
@@ -46,6 +59,9 @@ import WidgetSettings from "./WidgetSettings"
 
 const itemActionBtn =
   "flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-icon"
+
+const settingCard =
+  "flex h-full min-w-0 flex-col gap-2 rounded-md border border-line bg-sunken px-3 py-2.5"
 
 function itemFallback(item) {
   return {
@@ -105,6 +121,7 @@ function draftFromWidget(widget) {
     }),
     scheduleEnabled: false,
     expireEnabled: false,
+    autoSpeak: false,
     ...defaultScheduleParts(),
   }
 }
@@ -223,12 +240,13 @@ function RichRuns({ runs, theme, className, textScale = 1 }) {
   )
 }
 
-function AnnouncementItemFrame({ item, theme, textScale = 1, trailing = null }) {
+function AnnouncementItemFrame({ item, theme, textScale = 1, trailing = null, speaking = false }) {
   const runs = itemRuns(item)
   const text = runsToPlain(runs)
   return (
     <div
-      className="relative rounded-lg border border-line-strong"
+      className={`relative rounded-lg border border-line-strong ${speaking ? "announcement-speaking" : ""}`}
+      data-announcement-speaking={speaking ? "true" : undefined}
       style={{ backgroundColor: widgetBackground(item.bgColor, theme) || "var(--sunken)" }}
     >
       <div className="flex items-start gap-1 px-2.5 py-3">
@@ -248,7 +266,9 @@ function AnnouncementItemFrame({ item, theme, textScale = 1, trailing = null }) 
   )
 }
 
-function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose, inert = false }) {
+const ANNOUNCEMENT_FOCUS_HALO = 12
+
+function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose, inert = false, speaking = false }) {
   const stageRef = useRef(null)
   const boxRef = useRef(null)
   const [scale, setScale] = useState(1)
@@ -267,18 +287,23 @@ function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose, inert
     const box = boxRef.current
     if (!stage || !box) return undefined
     const fit = () => {
-      const avail = stage.getBoundingClientRect()
+      const styles = window.getComputedStyle(stage)
+      const padX = (Number.parseFloat(styles.paddingLeft) || 0) + (Number.parseFloat(styles.paddingRight) || 0)
+      const padY = (Number.parseFloat(styles.paddingTop) || 0) + (Number.parseFloat(styles.paddingBottom) || 0)
+      const availW = stage.clientWidth - padX
+      const availH = stage.clientHeight - padY
       const width = sourceWidth || box.offsetWidth
       const height = box.offsetHeight
-      if (width < 1 || height < 1 || avail.width < 1 || avail.height < 1) return
-      setScale(Math.max(0.05, Math.min(avail.width / width, avail.height / height)))
+      if (width < 1 || height < 1 || availW < 1 || availH < 1) return
+      const halo = ANNOUNCEMENT_FOCUS_HALO * 2
+      setScale(Math.max(0.05, Math.min(availW / (width + halo), availH / (height + halo))))
     }
     fit()
     const observer = new ResizeObserver(fit)
     observer.observe(stage)
     observer.observe(box)
     return () => observer.disconnect()
-  }, [item, sourceWidth, textScale, theme])
+  }, [item, sourceWidth, textScale, theme, speaking])
 
   const width = sourceWidth || undefined
 
@@ -295,7 +320,7 @@ function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose, inert
             <Minimize2 size={14} strokeWidth={1.5} />
           </button>
         </header>
-        <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden">
+        <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden px-6 py-6">
           <div
             ref={boxRef}
             className="absolute top-1/2 left-1/2 pointer-events-none origin-center select-none"
@@ -304,7 +329,7 @@ function AnnouncementFocus({ item, theme, textScale, sourceWidth, onClose, inert
               transform: `translate(-50%, -50%) scale(${scale})`,
             }}
           >
-            <AnnouncementItemFrame item={item} theme={theme} textScale={textScale} />
+            <AnnouncementItemFrame item={item} theme={theme} textScale={textScale} speaking={speaking} />
           </div>
         </div>
       </div>
@@ -321,6 +346,136 @@ function PreviewFrame({ width = 0, children }) {
       >
         {children}
       </div>
+    </div>
+  )
+}
+
+function SpeechSettingsPanel({ getPreviewText }) {
+  const [settings, setSettings] = useState(readSpeechSettings)
+  const [voices, setVoices] = useState([])
+  const [previewing, setPreviewing] = useState(false)
+  const [notice, setNotice] = useState("")
+  const [appliedVoice, setAppliedVoice] = useState("")
+
+  useEffect(() => subscribeKoreanVoices(setVoices), [])
+  useEffect(() => subscribeAnnouncementPreview(setPreviewing), [])
+  useEffect(
+    () =>
+      subscribeAnnouncementSpeechStatus((status) => {
+        if (status.appliedVoice) setAppliedVoice(status.appliedVoice)
+        if (status.error === "voice-unavailable") {
+          const label = status.requestedVoice || "선택한 목소리"
+          setNotice(`선택한 목소리 ‘${label}’를 이 브라우저에서 사용할 수 없습니다.`)
+          return
+        }
+        if (status.reason === "start" && status.appliedVoice) {
+          setNotice(`‘${status.appliedVoice}’로 읽고 있습니다.`)
+        }
+      }),
+    [],
+  )
+  useEffect(
+    () => () => {
+      stopAnnouncementPreview()
+    },
+    [],
+  )
+
+  const selectedInList = voices.some((voice) => voice.voiceURI === settings.voiceURI)
+  const selectValue = settings.voiceURI
+
+  const update = (patch) => {
+    setNotice("")
+    setSettings(saveSpeechSettings(patch))
+  }
+
+  const onVoiceChange = (voiceURI) => {
+    const voice = voices.find((item) => item.voiceURI === voiceURI)
+    update({
+      voiceURI,
+      voiceName: voice?.name || "",
+      voiceLang: voice?.lang || "",
+    })
+  }
+
+  return (
+    <div className={settingCard}>
+      <p className="text-[12px] tracking-wide text-muted uppercase">음성 읽기 설정</p>
+      <div className="flex flex-wrap gap-1.5">
+        {[
+          { id: "slow", label: "느리게" },
+          { id: "normal", label: "보통" },
+          { id: "fast", label: "빠르게" },
+        ].map((option) => {
+          const selected = settings.rate === option.id
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => update({ rate: option.id })}
+              className={`h-8 rounded-md border px-3 text-[13px] transition-colors ${
+                selected
+                  ? "border-line-strong bg-active text-ink"
+                  : "border-line bg-widget text-icon hover:bg-hover hover:text-ink"
+              }`}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+      <label className="block">
+        <span className="mb-1 block text-[11px] text-muted">목소리</span>
+        <select
+          value={selectValue}
+          onChange={(event) => onVoiceChange(event.target.value)}
+          className="h-8 w-full min-w-0 rounded-md border border-line bg-widget px-2 text-[13px] text-ink"
+        >
+          <option value="">브라우저 기본</option>
+          {!selectedInList && settings.voiceURI && (
+            <option value={settings.voiceURI}>
+              {settings.voiceName || settings.voiceURI} (이 브라우저에 없음)
+            </option>
+          )}
+          {voices.map((voice) => (
+            <option key={voice.voiceURI} value={voice.voiceURI}>
+              {voice.name}
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block text-[11px] text-muted">
+          이 컴퓨터에서 사용할 수 있는 목소리입니다.
+        </span>
+      </label>
+      {notice ? <p className="text-[12px] text-ink">{notice}</p> : null}
+      {appliedVoice && !notice ? (
+        <p className="text-[11px] text-muted">마지막 재생: {appliedVoice}</p>
+      ) : null}
+      <button
+        type="button"
+        aria-pressed={previewing}
+        onClick={() => {
+          const text = announcementSpeechText(getPreviewText?.() || "")
+          if (!text && !previewing) return
+          void toggleAnnouncementPreview(text).then((result) => {
+            setPreviewing(Boolean(result?.active))
+            if (result?.error) setNotice(result.error)
+            else if (result?.active && result.appliedVoice) {
+              setNotice(`미리듣기: ‘${result.appliedVoice}’`)
+              setAppliedVoice(result.appliedVoice)
+            } else setNotice("")
+          })
+        }}
+        className={`mt-auto flex h-8 w-fit items-center gap-1.5 rounded-md border px-3 text-[13px] transition-colors ${
+          previewing
+            ? "border-line-strong bg-active text-ink"
+            : "border-line bg-widget text-icon hover:bg-hover hover:text-ink"
+        }`}
+      >
+        <Volume2 size={14} strokeWidth={1.5} />
+        {previewing ? "미리듣기 중지" : "미리듣기"}
+      </button>
     </div>
   )
 }
@@ -432,12 +587,7 @@ function AnnouncementEditorModal({
         />
         </PreviewFrame>
         {hint && <p className="text-[12px] text-muted">{hint}</p>}
-        <div
-          className={`grid items-start gap-x-3 gap-y-2 ${
-            showSchedule ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-          }`}
-        >
-          {showSchedule && (
+        {showSchedule && (
             <div className="min-w-0 space-y-2 rounded-md border border-line bg-sunken px-3 py-2.5">
               <p className="text-[12px] tracking-wide text-muted uppercase">표시 시점</p>
               <div className="flex flex-wrap gap-1.5">
@@ -494,8 +644,9 @@ function AnnouncementEditorModal({
                 </div>
               )}
             </div>
-          )}
-          <div className="min-w-0 space-y-2 rounded-md border border-line bg-sunken px-3 py-2.5">
+        )}
+        <div className="grid grid-cols-1 items-stretch gap-3 min-[560px]:grid-cols-2 min-[800px]:grid-cols-3">
+          <div className={settingCard}>
             <p className="text-[12px] tracking-wide text-muted uppercase">종료 시점</p>
             <div className="flex flex-wrap gap-1.5">
               {[
@@ -567,6 +718,42 @@ function AnnouncementEditorModal({
               </p>
             )}
           </div>
+        <div className={settingCard}>
+          <p className="text-[12px] tracking-wide text-muted uppercase">음성 자동 읽기</p>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: false, label: "끄기" },
+              { id: true, label: "켜기" },
+            ].map((option) => {
+              const selected = Boolean(draft.autoSpeak) === option.id
+              return (
+                <button
+                  key={String(option.id)}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onChange({ autoSpeak: option.id })}
+                  className={`h-8 rounded-md border px-3 text-[13px] transition-colors ${
+                    selected
+                      ? "border-line-strong bg-active text-ink"
+                      : "border-line bg-widget text-icon hover:bg-hover hover:text-ink"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[12px] text-muted">
+            켜 두면 이 알림이 화면에 나타날 때 TV에서 한 번 읽어 줍니다.
+          </p>
+        </div>
+        <SpeechSettingsPanel
+          getPreviewText={() => {
+            const flushed = editorFlushRef.current?.()
+            const runs = flushed ?? itemRuns(draftRef.current)
+            return runsToPlain(runs)
+          }}
+        />
         </div>
         <div className="flex items-center justify-between gap-2">
           <button
@@ -682,12 +869,118 @@ export default function AnnouncementWidget({
   const focusedItem = board.items.find((item) => item.id === focus?.id) ?? null
   const [dragId, setDragId] = useState(null)
   const [dropSlot, setDropSlot] = useState(null)
+  const [speech, setSpeech] = useState(() => ({
+    unlocked: !isReceiver,
+    blocked: false,
+    widgetId: null,
+    itemId: null,
+    error: "",
+    requestedVoice: "",
+    appliedVoice: "",
+  }))
+  const [spotlight, setSpotlight] = useState(null)
+  const seenAutoSpeak = useRef(null)
   const listRef = useRef(null)
   const dragRef = useRef(null)
   const widgetRef = useRef(widget)
   widgetRef.current = widget
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const focusRef = useRef(focus)
+  focusRef.current = focus
+  const boardItemsRef = useRef(board.items)
+  boardItemsRef.current = board.items
+  const spotlightRef = useRef(null)
+  const restoreFocusRef = useRef(null)
+  const focusModeRef = useRef("manual")
+  const expandTimerRef = useRef(0)
+  const expandApiRef = useRef({})
+
+  const clearExpandTimer = () => {
+    if (expandTimerRef.current) {
+      window.clearTimeout(expandTimerRef.current)
+      expandTimerRef.current = 0
+    }
+  }
+
+  const finishSpeechExpand = (requestId) => {
+    if (spotlightRef.current?.requestId !== requestId) return
+    clearExpandTimer()
+    spotlightRef.current = null
+    setSpotlight(null)
+    if (focusModeRef.current !== "speech") return
+    const restore = restoreFocusRef.current
+    restoreFocusRef.current = null
+    const keep = restore && boardItemsRef.current.some((item) => item.id === restore.id)
+    if (keep) {
+      focusModeRef.current = "manual"
+      setFocus(restore)
+      if (!isReceiver) {
+        persistAnnouncementFocus({
+          widgetId: widget.id,
+          itemId: restore.id,
+          width: restore.width,
+        })
+      }
+      return
+    }
+    focusModeRef.current = "manual"
+    setFocus(null)
+    if (!isReceiver) persistAnnouncementFocus(null)
+  }
+
+  const beginSpeechExpand = ({ itemId, requestId, until, persist = !isReceiver }) => {
+    if (!itemId || !requestId) return
+    if (spotlightRef.current?.requestId === requestId && focusModeRef.current === "speech") return
+    clearExpandTimer()
+    if (focusModeRef.current === "manual" && focusRef.current) {
+      restoreFocusRef.current = { ...focusRef.current }
+    }
+    focusModeRef.current = "speech"
+    const measured =
+      listRef.current?.querySelector(`[data-announcement-id="${itemId}"]`)?.getBoundingClientRect().width || 0
+    const width = focusRef.current?.id === itemId ? focusRef.current.width || measured : measured
+    const nextSpot = { itemId, requestId, until: Number(until) || Date.now() + SPEECH_EXPAND_MS }
+    spotlightRef.current = nextSpot
+    setSpotlight(nextSpot)
+    setFocus({ id: itemId, width })
+    if (!isReceiver) persistWidgetFocus(null)
+    if (persist) {
+      persistAnnouncementFocus({
+        widgetId: widget.id,
+        itemId,
+        width,
+        mode: "speech",
+        until: nextSpot.until,
+        requestId,
+      })
+    }
+    expandTimerRef.current = window.setTimeout(() => {
+      finishSpeechExpand(requestId)
+    }, Math.max(0, nextSpot.until - Date.now()))
+  }
+
+  const enterManualFocus = (itemId, width, persist = !isReceiver) => {
+    clearExpandTimer()
+    spotlightRef.current = null
+    setSpotlight(null)
+    restoreFocusRef.current = null
+    focusModeRef.current = "manual"
+    setFocus({ id: itemId, width })
+    if (persist) {
+      persistWidgetFocus(null)
+      persistAnnouncementFocus({ widgetId: widget.id, itemId, width })
+    }
+  }
+
+  expandApiRef.current = { beginSpeechExpand, finishSpeechExpand, enterManualFocus }
+
+  useEffect(
+    () => () => {
+      if (expandTimerRef.current) window.clearTimeout(expandTimerRef.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (isReceiver) return undefined
@@ -714,7 +1007,23 @@ export default function AnnouncementWidget({
       if (msg.type !== SYNC.ANNOUNCEMENT_FOCUS) return
       const payload = msg.payload || {}
       if (payload.widgetId === widget.id && payload.itemId) {
-        setFocus({ id: payload.itemId, width: Number(payload.width) || 0 })
+        if (payload.mode === "speech") {
+          const until = Number(payload.until) || 0
+          if (until && until <= Date.now()) return
+          expandApiRef.current.beginSpeechExpand({
+            itemId: payload.itemId,
+            requestId: payload.requestId,
+            until,
+            persist: false,
+          })
+          return
+        }
+        expandApiRef.current.enterManualFocus(payload.itemId, Number(payload.width) || 0, false)
+        return
+      }
+      if (focusModeRef.current === "speech") {
+        const req = spotlightRef.current?.requestId
+        if (req) expandApiRef.current.finishSpeechExpand(req)
         return
       }
       setFocus(null)
@@ -724,9 +1033,74 @@ export default function AnnouncementWidget({
   useEffect(() => {
     if (!focus?.id) return
     if (board.items.some((item) => item.id === focus.id)) return
+    const req = spotlightRef.current?.requestId
+    if (req) expandApiRef.current.finishSpeechExpand(req)
     setFocus(null)
     if (!isReceiver) persistAnnouncementFocus(null)
   }, [board.items, focus?.id, isReceiver])
+
+  useEffect(() => {
+    ensureAnnouncementSpeechBridge()
+    return subscribeAnnouncementSpeechStatus((status) => {
+      setSpeech(status)
+      if (status.widgetId && status.widgetId !== widget.id) return
+      if (status.reason === "start" && status.itemId && status.requestId) {
+        expandApiRef.current.beginSpeechExpand({
+          itemId: status.itemId,
+          requestId: status.requestId,
+          until: Number(status.expandUntil) || Date.now() + SPEECH_EXPAND_MS,
+          persist: !isReceiver,
+        })
+        return
+      }
+      if (status.reason === "stop" || status.reason === "reset" || status.reason === "blocked") {
+        const req = spotlightRef.current?.requestId
+        if (req) expandApiRef.current.finishSpeechExpand(req)
+      }
+    })
+  }, [widget.id])
+
+  useEffect(() => {
+    if (isReceiver) return
+    if (!seenAutoSpeak.current) {
+      seenAutoSpeak.current = new Set(board.items.map((item) => item.id))
+      return
+    }
+    const fresh = []
+    for (const item of board.items) {
+      if (seenAutoSpeak.current.has(item.id)) continue
+      seenAutoSpeak.current.add(item.id)
+      if (item.autoSpeak) fresh.push(item)
+    }
+    const settings = readSpeechSettings()
+    fresh.forEach((item) => {
+      const text = announcementSpeechText(runsToPlain(itemRuns(item)))
+      if (!text) return
+      requestAnnouncementSpeech({
+        action: "play",
+        queue: true,
+        widgetId: widget.id,
+        itemId: item.id,
+        text,
+        rate: settings.rate,
+        voiceURI: settings.voiceURI,
+        voiceName: settings.voiceName,
+        voiceLang: settings.voiceLang,
+        requestId: crypto.randomUUID(),
+      })
+    })
+  }, [board.items, isReceiver, widget.id])
+
+  useEffect(() => {
+    if (isReceiver) return
+    if (!speech.itemId || speech.widgetId !== widget.id) return
+    if (board.items.some((item) => item.id === speech.itemId)) return
+    requestAnnouncementSpeech({
+      action: "stop",
+      widgetId: widget.id,
+      itemId: speech.itemId,
+    })
+  }, [board.items, isReceiver, speech.itemId, speech.widgetId, widget.id])
 
   useEffect(() => {
     if (!addItemOpen) {
@@ -755,6 +1129,7 @@ export default function AnnouncementWidget({
         ...item,
         scheduleEnabled: true,
         expireEnabled: hasExpire(item),
+        autoSpeak: Boolean(item.autoSpeak),
         scheduledDate: item.scheduledDate,
         scheduledTime: item.scheduledTime,
         runs: itemRuns(item).map((run) => ({ ...run })),
@@ -874,6 +1249,11 @@ export default function AnnouncementWidget({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {!isReceiver && speech.error === "voice-unavailable" && (
+        <p className="px-3 py-1.5 text-[12px] text-ink">
+          선택한 목소리 ‘{speech.requestedVoice || "선택한 목소리"}’를 이 브라우저에서 사용할 수 없습니다.
+        </p>
+      )}
       <div className="widget-scroll min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {board.items.length === 0 && (
           <div className="flex h-full items-center justify-center px-5 text-center">
@@ -907,6 +1287,7 @@ export default function AnnouncementWidget({
                   item={item}
                   theme={theme}
                   textScale={textScale}
+                  speaking={false}
                   trailing={
                     <div className="no-drag flex shrink-0 flex-col gap-0.5 pt-0.5 opacity-50 transition-opacity group-hover:opacity-85">
                       <button
@@ -915,19 +1296,51 @@ export default function AnnouncementWidget({
                         onClick={(event) => {
                           const row = event.currentTarget.closest("[data-announcement-id]")
                           const width = row?.getBoundingClientRect().width ?? 0
-                          setFocus({ id: item.id, width })
-                          if (!isReceiver) {
-                            persistWidgetFocus(null)
-                            persistAnnouncementFocus({
-                              widgetId: widget.id,
-                              itemId: item.id,
-                              width,
-                            })
-                          }
+                          enterManualFocus(item.id, width)
                         }}
                         className={itemActionBtn}
                       >
                         <Maximize2 size={13} strokeWidth={1.5} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={speech.itemId === item.id ? "음성 중지" : "음성 읽기"}
+                        aria-pressed={speech.widgetId === widget.id && speech.itemId === item.id}
+                        onClick={() => {
+                          if (isReceiver) return
+                          const settings = readSpeechSettings()
+                          if (speech.widgetId === widget.id && speech.itemId === item.id) {
+                            requestAnnouncementSpeech({
+                              action: "stop",
+                              widgetId: widget.id,
+                              itemId: item.id,
+                            })
+                            const req = spotlightRef.current?.requestId
+                            if (req) finishSpeechExpand(req)
+                            return
+                          }
+                          const text = announcementSpeechText(runsToPlain(itemRuns(item)))
+                          if (!text) return
+                          requestAnnouncementSpeech({
+                            action: "play",
+                            queue: false,
+                            widgetId: widget.id,
+                            itemId: item.id,
+                            text,
+                            rate: settings.rate,
+                            voiceURI: settings.voiceURI,
+                            voiceName: settings.voiceName,
+                            voiceLang: settings.voiceLang,
+                            requestId: crypto.randomUUID(),
+                          })
+                        }}
+                        className={`${itemActionBtn} ${
+                          speech.widgetId === widget.id && speech.itemId === item.id
+                            ? "bg-hover text-ink"
+                            : ""
+                        }`}
+                      >
+                        <Volume2 size={13} strokeWidth={1.5} />
                       </button>
                       <button
                         type="button"
@@ -939,6 +1352,7 @@ export default function AnnouncementWidget({
                               ...item,
                               bgColor: item.bgColor,
                               expireEnabled: hasExpire(item),
+                              autoSpeak: Boolean(item.autoSpeak),
                               runs: itemRuns(item).map((run) => ({ ...run })),
                             },
                           })
@@ -975,8 +1389,14 @@ export default function AnnouncementWidget({
           theme={theme}
           textScale={textScale}
           sourceWidth={focus?.width ?? 0}
+          speaking={spotlight?.itemId === focusedItem.id}
           inert={isReceiver}
           onClose={() => {
+            clearExpandTimer()
+            spotlightRef.current = null
+            setSpotlight(null)
+            restoreFocusRef.current = null
+            focusModeRef.current = "manual"
             setFocus(null)
             if (!isReceiver) persistAnnouncementFocus(null)
           }}
