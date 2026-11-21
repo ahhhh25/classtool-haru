@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, ChevronLeft } from "lucide-react"
 import { isFirebaseConfigured } from "../lib/firebase"
 import {
   firebaseErrorMessage,
-  subscribeLiveBoard,
+  subscribeKioskLive,
   toggleStudentCompletion,
 } from "../lib/kioskSession"
 import {
@@ -49,6 +49,7 @@ export default function KioskPage() {
   const [selectedId, setSelectedId] = useState(null)
   const [busyId, setBusyId] = useState("")
   const [pulseId, setPulseId] = useState("")
+  const retryRef = useRef(null)
 
   useEffect(() => {
     if (!token) return undefined
@@ -60,15 +61,8 @@ export default function KioskPage() {
     rememberKioskToken(token)
     setStatus("connecting")
     setError("")
-    const stop = subscribeLiveBoard(
-      token,
-      (value) => {
-        if (!value) {
-          setLive(null)
-          setStatus("error")
-          setError("연결이 없거나 교사가 해제했습니다.")
-          return
-        }
+    const session = subscribeKioskLive(token, {
+      onLive(value) {
         setLive((previous) => {
           const next = { ...value }
           const incomingLists = value.checklists
@@ -84,15 +78,20 @@ export default function KioskPage() {
           }
           return next
         })
-        setStatus("live")
-        setError("")
       },
-      (err) => {
-        setStatus("error")
-        setError(firebaseErrorMessage(err))
+      onStatus({ status: nextStatus, error: nextError }) {
+        setStatus(nextStatus)
+        setError(nextError || "")
+        if (nextStatus !== "live" && nextStatus !== "retrying" && nextStatus !== "connecting") {
+          setLive(null)
+        }
       },
-    )
-    return stop
+    })
+    retryRef.current = session.retry
+    return () => {
+      retryRef.current = null
+      session.stop()
+    }
   }, [token])
 
   const students = useMemo(() => studentsFromLive(live), [live])
@@ -173,7 +172,44 @@ export default function KioskPage() {
           <p className="px-2 text-center text-[14px] text-muted">연결하는 중…</p>
         )}
 
-        {error && <p className="mb-4 px-2 text-center text-[14px] text-muted">{error}</p>}
+        {status === "retrying" && (
+          <p className="px-2 text-center text-[14px] text-muted">다시 연결하는 중…</p>
+        )}
+
+        {status === "invalid" && (
+          <div className="mx-auto flex max-w-sm flex-col items-center gap-4 px-2 text-center">
+            <p className="text-[15px] leading-relaxed text-muted">
+              유효하지 않거나 만료된 연결 주소입니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => retryRef.current?.()}
+              className="h-11 rounded-xl border border-line bg-widget px-6 text-[14px] text-ink hover:bg-hover"
+            >
+              다시 연결
+            </button>
+          </div>
+        )}
+
+        {status === "error" && (
+          <div className="mx-auto flex max-w-sm flex-col items-center gap-4 px-2 text-center">
+            <p className="text-[15px] leading-relaxed text-muted">연결에 실패했습니다</p>
+            {error && error !== "연결에 실패했습니다." && (
+              <p className="text-[14px] leading-relaxed text-faint">{error}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => retryRef.current?.()}
+              className="h-11 rounded-xl border border-line bg-widget px-6 text-[14px] text-ink hover:bg-hover"
+            >
+              다시 연결
+            </button>
+          </div>
+        )}
+
+        {status === "live" && error && (
+          <p className="mb-4 px-2 text-center text-[14px] text-muted">{error}</p>
+        )}
 
         {status === "live" && !selected && lists.length === 0 && (
           <p className="px-2 text-center text-[15px] text-muted">

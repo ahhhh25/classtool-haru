@@ -652,14 +652,14 @@ function GroupPick({ students, mode }) {
             {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
               <div
                 key={n}
-                className={`flex min-w-0 items-center justify-center rounded-2xl border font-semibold ${
+                className={`flex min-w-0 items-center justify-center overflow-hidden rounded-2xl border leading-none font-bold tabular-nums ${
                   picked.has(n)
                     ? "border-line text-faint line-through opacity-70"
                     : "border-line bg-widget text-ink"
                 }`}
                 style={{
                   height: "calc((100cqi - 3.75rem) / 7.25)",
-                  fontSize: "clamp(1.375rem, calc((100cqi - 3.75rem) / 16), 2.5rem)",
+                  fontSize: "clamp(2.5rem, calc((100cqi - 3.75rem) / 9.25), 8rem)",
                 }}
               >
                 {n}
@@ -721,12 +721,12 @@ function GroupPick({ students, mode }) {
             {orderNums.map((num, idx) => (
               <div
                 key={`${num}-${idx}`}
-                className={`flex min-w-0 items-center justify-center rounded-2xl border border-line bg-widget font-semibold text-ink ${
+                className={`flex min-w-0 items-center justify-center overflow-hidden rounded-2xl border border-line bg-widget leading-none font-bold tabular-nums text-ink ${
                   orderShuffling ? "tool-shuffle" : ""
                 }`}
                 style={{
                   height: "calc((100cqi - 3.75rem) / 7.25)",
-                  fontSize: "clamp(1.375rem, calc((100cqi - 3.75rem) / 16), 2.5rem)",
+                  fontSize: "clamp(2.5rem, calc((100cqi - 3.75rem) / 9.25), 8rem)",
                 }}
               >
                 {num}

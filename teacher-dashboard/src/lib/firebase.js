@@ -93,7 +93,7 @@ export function firebaseErrorMessage(error) {
   if (code === "auth/admin-restricted-operation" || code === "auth/operation-not-allowed") {
     return "익명 로그인이 꺼져 있습니다. Firebase Authentication에서 Anonymous를 켜 주세요."
   }
-  if (code === "auth/network-request-failed" || code === "unavailable") {
+  if (code === "auth/network-request-failed" || code === "unavailable" || code === "timeout") {
     return "네트워크에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."
   }
   if (code === "PERMISSION_DENIED" || code === "permission-denied") {

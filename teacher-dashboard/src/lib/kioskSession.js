@@ -1,4 +1,4 @@
-import { get, onValue, ref, remove, set, update } from "firebase/database"
+import { get, goOnline, onValue, ref, remove, set, update } from "firebase/database"
 import { ensureAnonymousUser, firebaseErrorMessage, getFirebaseDb, isFirebaseConfigured } from "./firebase"
 import { boardToCloudMaps } from "../utils/checkboardCloud"
 import { isKioskLinked, loadKioskLink, saveKioskLink } from "../utils/kioskLinkStore"
@@ -169,11 +169,220 @@ export async function pushBoardToCloud(widget, previousCompletions = {}) {
 export function subscribeLiveBoard(kioskToken, onData, onError) {
   const db = getFirebaseDb()
   if (!db || !kioskToken) return () => {}
+  try {
+    goOnline(db)
+  } catch {
+    /* already connected */
+  }
   return onValue(
     ref(db, `live/${kioskToken}`),
     (snap) => onData(snap.val()),
     (error) => onError?.(error),
   )
+}
+
+const KIOSK_MAX_ATTEMPTS = 5
+const KIOSK_RETRY_DELAYS_MS = [0, 1500, 3000, 5000, 8000]
+const KIOSK_SNAPSHOT_TIMEOUT_MS = 8000
+
+function logKiosk(event, detail = {}) {
+  const safe = { ...detail }
+  delete safe.token
+  delete safe.kioskToken
+  delete safe.uid
+  console.info("[haru-kiosk]", event, safe)
+}
+
+function wakeDatabase() {
+  const db = getFirebaseDb()
+  if (!db) return null
+  try {
+    goOnline(db)
+  } catch {
+    /* ignore */
+  }
+  return db
+}
+
+/**
+ * 학생용(태블릿) 연결: kioskIndex로 주소 유효성을 먼저 확인하고,
+ * live 구독이 응답하지 않으면 제한된 횟수로 재시도한다.
+ */
+export function subscribeKioskLive(kioskToken, { onLive, onStatus } = {}) {
+  let cancelled = false
+  let unsubLive = null
+  let attempt = 0
+  let timeoutId = null
+  let retryId = null
+  let liveOk = false
+  let lastStatus = "connecting"
+  let retryArmed = false
+
+  const setStatus = (status, error = "", reason = "") => {
+    lastStatus = status
+    onStatus?.({ status, error, reason })
+  }
+
+  const detachLive = () => {
+    if (unsubLive) {
+      unsubLive()
+      unsubLive = null
+    }
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  const stopRetryLoop = () => {
+    if (retryId) {
+      window.clearTimeout(retryId)
+      retryId = null
+    }
+  }
+
+  const scheduleRetry = (err) => {
+    if (cancelled || retryArmed) return
+    retryArmed = true
+    detachLive()
+    const code = err?.code || err?.message || "unknown"
+    attempt += 1
+    if (attempt >= KIOSK_MAX_ATTEMPTS) {
+      logKiosk("give-up", { code, attempts: attempt })
+      setStatus("error", "연결에 실패했습니다.", code)
+      return
+    }
+    const delay = KIOSK_RETRY_DELAYS_MS[Math.min(attempt, KIOSK_RETRY_DELAYS_MS.length - 1)]
+    logKiosk("retry-scheduled", { code, attempt: attempt + 1, delayMs: delay })
+    setStatus("retrying", "", code)
+    retryId = window.setTimeout(() => {
+      retryId = null
+      retryArmed = false
+      connect()
+    }, delay)
+  }
+
+  const connect = async () => {
+    if (cancelled) return
+    retryArmed = false
+    detachLive()
+    const retrying = attempt > 0
+    setStatus(retrying ? "retrying" : "connecting")
+    logKiosk(retrying ? "retry" : "connect", {
+      attempt: attempt + 1,
+      tokenLength: typeof kioskToken === "string" ? kioskToken.length : 0,
+    })
+
+    if (!kioskToken) {
+      setStatus("invalid", "유효하지 않거나 만료된 연결 주소입니다.", "missing-token")
+      return
+    }
+    if (!isFirebaseConfigured()) {
+      setStatus("error", "Firebase 설정이 없어 학생용 화면에 연결할 수 없습니다.", "no-config")
+      return
+    }
+
+    const db = wakeDatabase()
+    if (!db) {
+      scheduleRetry({ code: "no-db", message: "Realtime Database를 열 수 없습니다." })
+      return
+    }
+
+    let index = null
+    try {
+      index = await readKioskIndex(kioskToken)
+    } catch (err) {
+      logKiosk("kioskIndex-error", { code: err?.code || "", message: err?.message || "" })
+      scheduleRetry(err)
+      return
+    }
+    if (cancelled) return
+
+    if (!index || typeof index !== "object") {
+      logKiosk("kioskIndex-missing", { tokenLength: kioskToken.length })
+      setStatus("invalid", "유효하지 않거나 만료된 연결 주소입니다.", "kioskIndex-missing")
+      return
+    }
+
+    let resolved = false
+    unsubLive = onValue(
+      ref(db, `live/${kioskToken}`),
+      (snap) => {
+        if (cancelled) return
+        const value = snap.val()
+        if (!value || typeof value !== "object") {
+          logKiosk("live-empty", { hadLive: liveOk, attempt: attempt + 1 })
+          if (liveOk) {
+            liveOk = false
+            setStatus("invalid", "연결이 없거나 교사가 해제했습니다.", "live-removed")
+            detachLive()
+          }
+          return
+        }
+        resolved = true
+        liveOk = true
+        attempt = 0
+        if (timeoutId) {
+          window.clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        onLive?.(value)
+        setStatus("live", "")
+      },
+      (error) => {
+        logKiosk("live-listen-error", { code: error?.code || "", message: error?.message || "" })
+        liveOk = false
+        scheduleRetry(error)
+      },
+    )
+
+    timeoutId = window.setTimeout(() => {
+      timeoutId = null
+      if (cancelled || resolved || liveOk) return
+      logKiosk("snapshot-timeout", { attempt: attempt + 1 })
+      scheduleRetry({ code: "timeout", message: "Realtime Database 응답 없음" })
+    }, KIOSK_SNAPSHOT_TIMEOUT_MS)
+  }
+
+  const retryNow = () => {
+    if (cancelled) return
+    stopRetryLoop()
+    attempt = 0
+    liveOk = false
+    connect()
+  }
+
+  const resumeIfNeeded = (reason) => {
+    if (cancelled || liveOk || lastStatus === "invalid") return
+    logKiosk(reason, { attempt: attempt + 1, lastStatus })
+    retryNow()
+  }
+
+  const onOnline = () => {
+    wakeDatabase()
+    resumeIfNeeded("browser-online")
+  }
+
+  const onVisible = () => {
+    if (document.hidden) return
+    wakeDatabase()
+    resumeIfNeeded("page-visible")
+  }
+
+  window.addEventListener("online", onOnline)
+  document.addEventListener("visibilitychange", onVisible)
+  connect()
+
+  return {
+    stop() {
+      cancelled = true
+      detachLive()
+      stopRetryLoop()
+      window.removeEventListener("online", onOnline)
+      document.removeEventListener("visibilitychange", onVisible)
+    },
+    retry: retryNow,
+  }
 }
 
 export async function readKioskIndex(kioskToken) {
