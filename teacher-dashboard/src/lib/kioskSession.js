@@ -28,7 +28,24 @@ async function writeClassShell(uid, classId, name) {
   })
 }
 
-async function writeLiveAndClassData(widget, classId, kioskToken, previousCompletions) {
+function completionCellUpdates(maps, previousCompletions) {
+  const updates = {}
+  const prev = previousCompletions && typeof previousCompletions === "object" ? previousCompletions : {}
+  for (const [itemId, byStudent] of Object.entries(maps.completions)) {
+    if (!byStudent || typeof byStudent !== "object") continue
+    for (const [studentId, cell] of Object.entries(byStudent)) {
+      const old = prev[itemId]?.[studentId]
+      if (old && Boolean(old.done) === Boolean(cell?.done)) continue
+      updates[`completions/${itemId}/${studentId}`] = {
+        done: Boolean(cell?.done),
+        at: Date.now(),
+      }
+    }
+  }
+  return updates
+}
+
+async function writeLiveAndClassData(widget, classId, kioskToken, previousCompletions, completionsMode = "replace") {
   const db = dbOrThrow()
   const maps = boardToCloudMaps(widget.checkboard, previousCompletions)
   const studentCount = Object.keys(maps.students).length
@@ -39,16 +56,25 @@ async function writeLiveAndClassData(widget, classId, kioskToken, previousComple
     activeChecklistId: maps.activeChecklistId,
     studentCount,
     students: studentCount > 0 ? maps.students : null,
-    completions: studentCount > 0 ? maps.completions : {},
   }
   if (hasChecklists) livePatch.checklists = maps.checklists
-  await update(ref(db, `live/${kioskToken}`), livePatch)
+  if (completionsMode === "replace") {
+    livePatch.completions = studentCount > 0 ? maps.completions : {}
+  }
+  const liveRef = ref(db, `live/${kioskToken}`)
+  await update(liveRef, livePatch)
+  if (completionsMode === "diff") {
+    const cellUpdates = completionCellUpdates(maps, previousCompletions)
+    if (Object.keys(cellUpdates).length) await update(liveRef, cellUpdates)
+  }
   const classPatch = {
     studentCount,
     students: studentCount > 0 ? maps.students : null,
-    completions: studentCount > 0 ? maps.completions : {},
   }
   if (hasChecklists) classPatch.checklists = maps.checklists
+  if (completionsMode === "replace") {
+    classPatch.completions = studentCount > 0 ? maps.completions : {}
+  }
   if (Object.keys(classPatch).length) {
     await update(ref(db, `classData/${classId}`), classPatch)
   }
@@ -154,7 +180,7 @@ export async function disconnectKiosk() {
   })
 }
 
-export async function pushBoardToCloud(widget, previousCompletions = {}) {
+export async function pushBoardToCloud(widget, previousCompletions = {}, completionsMode = "diff") {
   const link = loadKioskLink()
   if (!isKioskLinked(link) || link.widgetId !== widget.id) return null
   const user = await ensureBrowserOwner()
@@ -163,7 +189,7 @@ export async function pushBoardToCloud(widget, previousCompletions = {}) {
     saveKioskLink(null)
     throw new Error("이 브라우저는 이 학급의 소유자가 아닙니다. 새로 연결해 주세요.")
   }
-  return writeLiveAndClassData(widget, link.classId, link.kioskToken, previousCompletions)
+  return writeLiveAndClassData(widget, link.classId, link.kioskToken, previousCompletions, completionsMode)
 }
 
 export function subscribeLiveBoard(kioskToken, onData, onError) {
@@ -184,13 +210,30 @@ export function subscribeLiveBoard(kioskToken, onData, onError) {
 const KIOSK_MAX_ATTEMPTS = 5
 const KIOSK_RETRY_DELAYS_MS = [0, 1500, 3000, 5000, 8000]
 const KIOSK_SNAPSHOT_TIMEOUT_MS = 8000
+const KIOSK_INDEX_TIMEOUT_MS = 6000
+const KIOSK_WRITE_TIMEOUT_MS = 8000
 
-function logKiosk(event, detail = {}) {
+export function logKiosk(event, detail = {}) {
   const safe = { ...detail }
   delete safe.token
   delete safe.kioskToken
   delete safe.uid
+  delete safe.name
   console.info("[haru-kiosk]", event, safe)
+}
+
+function withTimeout(promise, ms, code) {
+  let timer = 0
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => {
+      const err = new Error(code)
+      err.code = code
+      reject(err)
+    }, ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) window.clearTimeout(timer)
+  })
 }
 
 function wakeDatabase() {
@@ -211,16 +254,19 @@ function wakeDatabase() {
 export function subscribeKioskLive(kioskToken, { onLive, onStatus } = {}) {
   let cancelled = false
   let unsubLive = null
+  let unsubConnected = null
   let attempt = 0
   let timeoutId = null
   let retryId = null
   let liveOk = false
+  let dbConnected = false
   let lastStatus = "connecting"
   let retryArmed = false
+  let inFlight = false
 
   const setStatus = (status, error = "", reason = "") => {
     lastStatus = status
-    onStatus?.({ status, error, reason })
+    onStatus?.({ status, error, reason, connected: dbConnected })
   }
 
   const detachLive = () => {
@@ -262,48 +308,8 @@ export function subscribeKioskLive(kioskToken, { onLive, onStatus } = {}) {
     }, delay)
   }
 
-  const connect = async () => {
-    if (cancelled) return
-    retryArmed = false
+  const attachLive = (db) => {
     detachLive()
-    const retrying = attempt > 0
-    setStatus(retrying ? "retrying" : "connecting")
-    logKiosk(retrying ? "retry" : "connect", {
-      attempt: attempt + 1,
-      tokenLength: typeof kioskToken === "string" ? kioskToken.length : 0,
-    })
-
-    if (!kioskToken) {
-      setStatus("invalid", "유효하지 않거나 만료된 연결 주소입니다.", "missing-token")
-      return
-    }
-    if (!isFirebaseConfigured()) {
-      setStatus("error", "Firebase 설정이 없어 학생용 화면에 연결할 수 없습니다.", "no-config")
-      return
-    }
-
-    const db = wakeDatabase()
-    if (!db) {
-      scheduleRetry({ code: "no-db", message: "Realtime Database를 열 수 없습니다." })
-      return
-    }
-
-    let index = null
-    try {
-      index = await readKioskIndex(kioskToken)
-    } catch (err) {
-      logKiosk("kioskIndex-error", { code: err?.code || "", message: err?.message || "" })
-      scheduleRetry(err)
-      return
-    }
-    if (cancelled) return
-
-    if (!index || typeof index !== "object") {
-      logKiosk("kioskIndex-missing", { tokenLength: kioskToken.length })
-      setStatus("invalid", "유효하지 않거나 만료된 연결 주소입니다.", "kioskIndex-missing")
-      return
-    }
-
     let resolved = false
     unsubLive = onValue(
       ref(db, `live/${kioskToken}`),
@@ -326,6 +332,10 @@ export function subscribeKioskLive(kioskToken, { onLive, onStatus } = {}) {
           window.clearTimeout(timeoutId)
           timeoutId = null
         }
+        logKiosk("live-data", {
+          studentCount: Number(value.studentCount) || 0,
+          checklistCount: value.checklists && typeof value.checklists === "object" ? Object.keys(value.checklists).length : 0,
+        })
         onLive?.(value)
         setStatus("live", "")
       },
@@ -344,33 +354,105 @@ export function subscribeKioskLive(kioskToken, { onLive, onStatus } = {}) {
     }, KIOSK_SNAPSHOT_TIMEOUT_MS)
   }
 
+  const connect = async () => {
+    if (cancelled || inFlight) return
+    inFlight = true
+    retryArmed = false
+    detachLive()
+    const retrying = attempt > 0
+    setStatus(retrying ? "retrying" : "connecting")
+    logKiosk(retrying ? "retry" : "connect-start", {
+      attempt: attempt + 1,
+      tokenLength: typeof kioskToken === "string" ? kioskToken.length : 0,
+    })
+
+    if (!kioskToken) {
+      inFlight = false
+      setStatus("invalid", "유효하지 않거나 만료된 연결 주소입니다.", "missing-token")
+      return
+    }
+    if (!isFirebaseConfigured()) {
+      inFlight = false
+      setStatus("error", "Firebase 설정이 없어 학생용 화면에 연결할 수 없습니다.", "no-config")
+      return
+    }
+
+    const db = wakeDatabase()
+    if (!db) {
+      inFlight = false
+      scheduleRetry({ code: "no-db", message: "Realtime Database를 열 수 없습니다." })
+      return
+    }
+
+    let index = null
+    try {
+      index = await withTimeout(readKioskIndex(kioskToken), KIOSK_INDEX_TIMEOUT_MS, "index-timeout")
+      logKiosk("kioskIndex-ok", { found: Boolean(index && typeof index === "object") })
+    } catch (err) {
+      inFlight = false
+      logKiosk("kioskIndex-error", { code: err?.code || "", message: err?.message || "" })
+      scheduleRetry(err)
+      return
+    }
+    if (cancelled) {
+      inFlight = false
+      return
+    }
+
+    if (!index || typeof index !== "object") {
+      inFlight = false
+      logKiosk("kioskIndex-missing", { tokenLength: kioskToken.length })
+      setStatus("invalid", "유효하지 않거나 만료된 연결 주소입니다.", "kioskIndex-missing")
+      return
+    }
+
+    attachLive(db)
+    inFlight = false
+  }
+
   const retryNow = () => {
     if (cancelled) return
     stopRetryLoop()
+    retryArmed = false
     attempt = 0
-    liveOk = false
     connect()
   }
 
   const resumeIfNeeded = (reason) => {
-    if (cancelled || liveOk || lastStatus === "invalid") return
-    logKiosk(reason, { attempt: attempt + 1, lastStatus })
+    if (cancelled || lastStatus === "invalid" || inFlight) return
+    logKiosk(reason, { attempt: attempt + 1, lastStatus, liveOk, dbConnected })
+    wakeDatabase()
+    if (liveOk && dbConnected && unsubLive) {
+      setStatus("live", "")
+      return
+    }
     retryNow()
   }
 
-  const onOnline = () => {
-    wakeDatabase()
-    resumeIfNeeded("browser-online")
-  }
-
+  const onOnline = () => resumeIfNeeded("browser-online")
   const onVisible = () => {
     if (document.hidden) return
-    wakeDatabase()
     resumeIfNeeded("page-visible")
   }
 
   window.addEventListener("online", onOnline)
   document.addEventListener("visibilitychange", onVisible)
+
+  const db = wakeDatabase()
+  if (db) {
+    unsubConnected = onValue(ref(db, ".info/connected"), (snap) => {
+      if (cancelled) return
+      dbConnected = snap.val() === true
+      logKiosk("db-connected", { connected: dbConnected, liveOk, lastStatus })
+      if (dbConnected) {
+        if (liveOk && unsubLive) setStatus("live", "")
+        else if (lastStatus === "retrying" || lastStatus === "error") resumeIfNeeded("db-online")
+      } else if (liveOk || lastStatus === "live") {
+        setStatus("retrying", "", "disconnected")
+      }
+    })
+  }
+
   connect()
 
   return {
@@ -378,6 +460,10 @@ export function subscribeKioskLive(kioskToken, { onLive, onStatus } = {}) {
       cancelled = true
       detachLive()
       stopRetryLoop()
+      if (unsubConnected) {
+        unsubConnected()
+        unsubConnected = null
+      }
       window.removeEventListener("online", onOnline)
       document.removeEventListener("visibilitychange", onVisible)
     },
@@ -390,19 +476,20 @@ export async function readKioskIndex(kioskToken) {
   return snap.val()
 }
 
+export async function setStudentCompletion(kioskToken, itemId, studentId, done) {
+  const db = dbOrThrow()
+  wakeDatabase()
+  const cellRef = ref(db, `live/${kioskToken}/completions/${itemId}/${studentId}`)
+  const payload = { done: Boolean(done), at: Date.now() }
+  await withTimeout(set(cellRef, payload), KIOSK_WRITE_TIMEOUT_MS, "write-timeout")
+  return payload
+}
+
 export async function toggleStudentCompletion(kioskToken, itemId, studentId) {
   const db = dbOrThrow()
-  const studentSnap = await get(ref(db, `live/${kioskToken}/students/${studentId}`))
-  const itemSnap = await get(ref(db, `live/${kioskToken}/checklists/${itemId}`))
-  if (!studentSnap.exists() || !itemSnap.exists()) {
-    throw new Error("학생 또는 체크 항목을 찾을 수 없습니다.")
-  }
   const cellRef = ref(db, `live/${kioskToken}/completions/${itemId}/${studentId}`)
-  const current = (await get(cellRef)).val()
-  await set(cellRef, {
-    done: !current?.done,
-    at: Date.now(),
-  })
+  const current = (await withTimeout(get(cellRef), KIOSK_INDEX_TIMEOUT_MS, "read-timeout")).val()
+  return setStudentCompletion(kioskToken, itemId, studentId, !current?.done)
 }
 
 export { firebaseErrorMessage }

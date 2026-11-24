@@ -11,8 +11,9 @@ export function useCheckboardCloud(widget, onChange) {
   const linked = isKioskLinked(link) && link.widgetId === widget.id
   const [status, setStatus] = useState(linked ? "connecting" : "idle")
   const [error, setError] = useState("")
-  const applyingRemote = useRef(false)
   const previousCompletions = useRef({})
+  const lastRemoteChecksKey = useRef("")
+  const sawLive = useRef(false)
   const boardRef = useRef(widget.checkboard)
   const onChangeRef = useRef(onChange)
   const widgetRef = useRef(widget)
@@ -22,6 +23,8 @@ export function useCheckboardCloud(widget, onChange) {
 
   useEffect(() => {
     if (!linked || !isFirebaseConfigured()) {
+      sawLive.current = false
+      lastRemoteChecksKey.current = ""
       setStatus("idle")
       setError("")
       return undefined
@@ -38,17 +41,16 @@ export function useCheckboardCloud(widget, onChange) {
         }
         previousCompletions.current =
           live.completions && typeof live.completions === "object" ? live.completions : {}
+        sawLive.current = true
         setStatus("live")
         setError("")
-        applyingRemote.current = true
         onChangeRef.current((current) => {
           const board = current.checkboard
           const patch = liveToBoardPatch(live, board)
+          const checks = patch?.checks ?? board?.checks ?? {}
+          lastRemoteChecksKey.current = JSON.stringify(checks)
           if (!patch) return {}
           return { checkboard: { checks: patch.checks } }
-        })
-        queueMicrotask(() => {
-          applyingRemote.current = false
         })
       },
       (err) => {
@@ -60,9 +62,12 @@ export function useCheckboardCloud(widget, onChange) {
   }, [linked, link?.kioskToken])
 
   useEffect(() => {
-    if (!linked || !isFirebaseConfigured() || applyingRemote.current) return undefined
+    if (!linked || !isFirebaseConfigured()) return undefined
+    const checksKey = JSON.stringify(widget.checkboard?.checks ?? {})
+    const completionsMode =
+      !sawLive.current || checksKey === lastRemoteChecksKey.current ? "skip" : "diff"
     const timer = window.setTimeout(() => {
-      pushBoardToCloud(widgetRef.current, previousCompletions.current).catch((err) => {
+      pushBoardToCloud(widgetRef.current, previousCompletions.current, completionsMode).catch((err) => {
         setStatus("error")
         setError(firebaseErrorMessage(err))
       })

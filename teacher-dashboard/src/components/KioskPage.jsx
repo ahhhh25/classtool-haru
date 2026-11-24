@@ -3,8 +3,9 @@ import { Check, ChevronLeft } from "lucide-react"
 import { isFirebaseConfigured } from "../lib/firebase"
 import {
   firebaseErrorMessage,
+  logKiosk,
+  setStudentCompletion,
   subscribeKioskLive,
-  toggleStudentCompletion,
 } from "../lib/kioskSession"
 import {
   readKioskTokenFromLocation,
@@ -47,9 +48,12 @@ export default function KioskPage() {
   const [status, setStatus] = useState(token ? "connecting" : "need-qr")
   const [error, setError] = useState("")
   const [selectedId, setSelectedId] = useState(null)
-  const [busyId, setBusyId] = useState("")
   const [pulseId, setPulseId] = useState("")
   const retryRef = useRef(null)
+  const pendingRef = useRef(new Map())
+  const writeChainRef = useRef(new Map())
+  const lastPointerRef = useRef(0)
+  const pointerStartRef = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     if (!token) return undefined
@@ -76,6 +80,23 @@ export default function KioskPage() {
           } else if (!hasStudents && previous?.students) {
             next.students = previous.students
           }
+          const completions = next.completions && typeof next.completions === "object" ? { ...next.completions } : {}
+          pendingRef.current.forEach((intent, key) => {
+            const split = key.indexOf(":")
+            const itemId = key.slice(0, split)
+            const studentId = key.slice(split + 1)
+            const remote = completions[itemId]?.[studentId]
+            const remoteAt = Number(remote?.at) || 0
+            if (remoteAt >= intent.at) {
+              pendingRef.current.delete(key)
+              return
+            }
+            completions[itemId] = {
+              ...completions[itemId],
+              [studentId]: { done: intent.done, at: intent.at },
+            }
+          })
+          next.completions = completions
           return next
         })
       },
@@ -104,19 +125,107 @@ export default function KioskPage() {
     }
   }, [lists, selectedId])
 
-  const toggle = async (student) => {
-    if (!token || !selected || busyId) return
-    setBusyId(student.id)
-    try {
-      await toggleStudentCompletion(token, selected.id, student.id)
-      setPulseId(student.id)
-      window.setTimeout(() => setPulseId(""), 420)
-    } catch (err) {
-      setError(firebaseErrorMessage(err))
-    } finally {
-      setBusyId("")
-    }
+  const cellDone = (itemId, studentId) => Boolean(live?.completions?.[itemId]?.[studentId]?.done)
+
+  const enqueueWrite = (key, task) => {
+    const prev = writeChainRef.current.get(key) || Promise.resolve()
+    const next = prev.then(task, task)
+    writeChainRef.current.set(key, next)
+    return next
   }
+
+  const applyLocalDone = (itemId, studentId, done, at) => {
+    setLive((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        completions: {
+          ...current.completions,
+          [itemId]: {
+            ...current.completions?.[itemId],
+            [studentId]: { done, at },
+          },
+        },
+      }
+    })
+  }
+
+  const toggle = (student) => {
+    if (!token || !selected) {
+      logKiosk("tap-ignored", { reason: !token ? "no-token" : "no-list" })
+      return
+    }
+    const itemId = selected.id
+    const key = `${itemId}:${student.id}`
+    const nextDone = !cellDone(itemId, student.id)
+    const at = Date.now()
+    pendingRef.current.set(key, { done: nextDone, at })
+    applyLocalDone(itemId, student.id, nextDone, at)
+    setPulseId(student.id)
+    window.setTimeout(() => setPulseId(""), 420)
+    logKiosk("tap", { itemId, studentId: student.id, nextDone })
+    enqueueWrite(key, async () => {
+      const intent = pendingRef.current.get(key)
+      if (!intent) return
+      try {
+        logKiosk("save-start", { itemId, studentId: student.id, done: intent.done })
+        let saved
+        try {
+          saved = await setStudentCompletion(token, itemId, student.id, intent.done)
+        } catch (first) {
+          logKiosk("save-retry", { itemId, studentId: student.id, code: first?.code || "" })
+          saved = await setStudentCompletion(token, itemId, student.id, intent.done)
+        }
+        const latest = pendingRef.current.get(key)
+        if (latest && latest.at === intent.at) pendingRef.current.delete(key)
+        logKiosk("save-ok", { itemId, studentId: student.id, done: saved.done })
+      } catch (err) {
+        const latest = pendingRef.current.get(key)
+        if (latest && latest.at === intent.at) {
+          pendingRef.current.delete(key)
+          applyLocalDone(itemId, student.id, !intent.done, Date.now())
+        }
+        logKiosk("save-fail", {
+          itemId,
+          studentId: student.id,
+          code: err?.code || "",
+          message: err?.message || "",
+        })
+        setError(firebaseErrorMessage(err))
+      }
+    })
+  }
+
+  const onCardPointerDown = (event) => {
+    pointerStartRef.current = { x: event.clientX, y: event.clientY }
+  }
+
+  const onCardPointerUp = (event, student) => {
+    if (event.pointerType === "mouse") return
+    if (event.button != null && event.button !== 0) return
+    const dx = event.clientX - pointerStartRef.current.x
+    const dy = event.clientY - pointerStartRef.current.y
+    if (dx * dx + dy * dy > 144) {
+      logKiosk("pointer-scroll", { studentId: student.id })
+      return
+    }
+    lastPointerRef.current = performance.now()
+    logKiosk("pointer", { studentId: student.id, pointerType: event.pointerType || "unknown" })
+    toggle(student)
+  }
+
+  const onCardClick = (event, student) => {
+    if (performance.now() - lastPointerRef.current < 650) {
+      logKiosk("click-dup", { studentId: student.id })
+      event.preventDefault()
+      return
+    }
+    logKiosk("click", { studentId: student.id })
+    toggle(student)
+  }
+
+  const showBoard = Boolean(live) && (status === "live" || status === "retrying" || status === "connecting")
+  const showConnecting = (status === "connecting" || status === "retrying") && !live
 
   return (
     <div className="theme-surface flex h-svh flex-col overflow-hidden bg-app text-ink">
@@ -168,12 +277,16 @@ export default function KioskPage() {
           </p>
         )}
 
-        {status === "connecting" && (
+        {showConnecting && status === "connecting" && (
           <p className="px-2 text-center text-[14px] text-muted">연결하는 중…</p>
         )}
 
-        {status === "retrying" && (
+        {showConnecting && status === "retrying" && (
           <p className="px-2 text-center text-[14px] text-muted">다시 연결하는 중…</p>
+        )}
+
+        {showBoard && status === "retrying" && (
+          <p className="mb-4 px-2 text-center text-[14px] text-muted">연결이 끊겼습니다. 다시 연결하는 중…</p>
         )}
 
         {status === "invalid" && (
@@ -207,17 +320,17 @@ export default function KioskPage() {
           </div>
         )}
 
-        {status === "live" && error && (
+        {showBoard && error && (
           <p className="mb-4 px-2 text-center text-[14px] text-muted">{error}</p>
         )}
 
-        {status === "live" && !selected && lists.length === 0 && (
+        {showBoard && !selected && lists.length === 0 && (
           <p className="px-2 text-center text-[15px] text-muted">
             지금 열려 있는 체크 항목이 없습니다.
           </p>
         )}
 
-        {status === "live" && !selected && lists.length > 0 && (
+        {showBoard && !selected && lists.length > 0 && (
           <ul className="mx-auto flex max-w-lg flex-col gap-3">
             {lists.map((item) => {
               const done = itemDoneCount(live, item.id, students)
@@ -239,21 +352,22 @@ export default function KioskPage() {
           </ul>
         )}
 
-        {status === "live" && selected && students.length === 0 && (
+        {showBoard && selected && students.length === 0 && (
           <p className="px-2 text-center text-[15px] text-muted">등록된 학생이 없습니다.</p>
         )}
 
-        {status === "live" && selected && students.length > 0 && (
+        {showBoard && selected && students.length > 0 && (
           <ul className="mx-auto grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {students.map((student) => {
-              const done = Boolean(live?.completions?.[selected.id]?.[student.id]?.done)
+              const done = cellDone(selected.id, student.id)
               return (
                 <li key={student.id}>
                   <button
                     type="button"
-                    disabled={busyId === student.id}
                     aria-pressed={done}
-                    onClick={() => toggle(student)}
+                    onPointerDown={onCardPointerDown}
+                    onPointerUp={(event) => onCardPointerUp(event, student)}
+                    onClick={(event) => onCardClick(event, student)}
                     className={`kiosk-name-btn flex min-h-[4.5rem] w-full items-center justify-center gap-2 rounded-2xl border px-3 py-4 text-[20px] leading-tight transition-colors ${
                       done
                         ? "kiosk-name-done border-accent bg-accent-soft text-accent-ink"
@@ -270,7 +384,7 @@ export default function KioskPage() {
         )}
       </main>
 
-      {status === "live" && selected && (
+      {showBoard && selected && (
         <p className="px-5 py-3 text-center text-[12px] text-faint">
           자기 이름을 누르면 완료됩니다. 잘못 눌렀으면 한 번 더 눌러 취소하세요.
         </p>
